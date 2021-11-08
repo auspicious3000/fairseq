@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from dataclasses import dataclass, field
-from fairseq.data import Dictionary, HubertDataset
+from fairseq.data import Dictionary, HubertDataset_1
 from fairseq.dataclass.configs import FairseqDataclass
 from fairseq.tasks import register_task
 from fairseq.tasks.fairseq_task import FairseqTask
@@ -168,7 +168,7 @@ class HubertPretrainingTask(FairseqTask):
         ]
 
         # hubert v1: pad_audio=True, random_crop=False;
-        self.datasets[split] = HubertDataset(
+        self.datasets[split] = HubertDataset_1(
             manifest,
             sample_rate=self.cfg.sample_rate,
             label_paths=paths,
