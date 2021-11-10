@@ -103,6 +103,12 @@ class HubertPretrainingConfig(FairseqDataclass):
         default=False,
         metadata={"help": "pad audio to the longest one in the batch if true"},
     )
+    spk2info: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "path to spk2info",
+        },
+    )
 
 
 @register_task("hubert_pretraining", dataclass=HubertPretrainingConfig)
@@ -184,6 +190,7 @@ class HubertPretrainingTask(FairseqTask):
             store_labels=False,
             random_crop=self.cfg.random_crop,
             single_target=self.cfg.single_target,
+            spk2info=self.cfg.spk2info
         )
 
     def max_positions(self) -> Tuple[int, int]:
