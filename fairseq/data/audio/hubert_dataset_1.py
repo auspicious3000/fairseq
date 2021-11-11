@@ -112,6 +112,8 @@ def verify_label_lengths(
 
 rng = np.random.default_rng(666)
 import parselmouth
+import warnings
+warnings.filterwarnings("error")
 from scipy.signal import sosfilt
 Qmin, Qmax = 2, 5
 Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
@@ -196,15 +198,15 @@ class HubertDataset_1(FairseqDataset):
         s = parselmouth.Sound(wav, sampling_frequency=sr)
         _, (lo, hi, f0_med) = self.spk2info[spk]
         
-        ratio_fs = rng.uniform(1, 1.41)
+        ratio_fs = rng.uniform(1, 1.4)
         coin = (rng.random() > 0.5)
         ratio_fs = coin*ratio_fs + (1-coin)*(1/ratio_fs)
         
-        ratio_ps = rng.uniform(1, 2.01)
+        ratio_ps = rng.uniform(1, 2)
         coin = (rng.random() > 0.5)
         ratio_ps = coin*ratio_ps + (1-coin)*(1/ratio_ps)
         
-        ratio_pr = rng.uniform(1, 1.51)
+        ratio_pr = rng.uniform(1, 1.5)
         coin = (rng.random() > 0.5)
         ratio_pr = coin*ratio_pr + (1-coin)*(1/ratio_pr)
         
@@ -225,11 +227,16 @@ class HubertDataset_1(FairseqDataset):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
+        try:
+            wav = self.random_formant_f0(wav, cur_sample_rate, spk)
+        except:
+            print(f'shabi: {fileName}')
         wav = self.random_eq(wav, cur_sample_rate)
-        wav = self.random_formant_f0(wav, cur_sample_rate, spk)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)
-        return wav
+        spk_emb, _ = self.spk2info[spk]
+        spk_emb = torch.from_numpy(spk_emb).float()
+        return wav, spk_emb
 
     def get_label(self, index, label_idx):
         if self.store_labels:
@@ -248,9 +255,9 @@ class HubertDataset_1(FairseqDataset):
         return [self.get_label(index, i) for i in range(self.num_labels)]
 
     def __getitem__(self, index):
-        wav = self.get_audio(index)
+        wav, spk_emb = self.get_audio(index)
         labels = self.get_labels(index)
-        return {"id": index, "source": wav, "label_list": labels}
+        return {"id": index, "source": wav, "label_list": labels, "spk_emb": spk_emb}
 
     def __len__(self):
         return len(self.sizes)
@@ -283,7 +290,10 @@ class HubertDataset_1(FairseqDataset):
         collated_audios, padding_mask, audio_starts = self.collater_audio(
             audios, audio_size
         )
-
+        
+        spk_embs = [s["spk_emb"] for s in samples]
+        collated_embs = self.collater_speaker(spk_embs)
+        
         targets_by_label = [
             [s["label_list"][i] for s in samples]
             for i in range(self.num_labels)
@@ -292,7 +302,7 @@ class HubertDataset_1(FairseqDataset):
             targets_by_label, audio_size, audio_starts
         )
 
-        net_input = {"source": collated_audios, "padding_mask": padding_mask}
+        net_input = {"source": collated_audios, "padding_mask": padding_mask, "spk_emb": collated_embs}
         batch = {
             "id": torch.LongTensor([s["id"] for s in samples]),
             "net_input": net_input,
@@ -307,6 +317,10 @@ class HubertDataset_1(FairseqDataset):
             batch["ntokens_list"] = ntokens_list
             batch["target_list"] = targets_list
         return batch
+    
+    def collater_speaker(self, spk_embs):
+        collated_speakers = torch.stack(spk_embs)
+        return collated_speakers
 
     def collater_audio(self, audios, audio_size):
         collated_audios = audios[0].new_zeros(len(audios), audio_size)

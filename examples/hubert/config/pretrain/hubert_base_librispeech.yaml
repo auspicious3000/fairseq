@@ -63,7 +63,7 @@ lr_scheduler:
   warmup_updates: 32000
 
 model:
-  _name: hubert
+  _name: hubert_1
   label_rate: ???
   skip_masked: false
   skip_nomask: false
