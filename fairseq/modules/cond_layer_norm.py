@@ -22,9 +22,12 @@ class CondLayerNorm(Module):
             self.bias_ln = Linear(self.dim_spk, 
                                   self.dim_last, 
                                   bias=False)
+            self.normalized_shape = (self.dim_spk, self.dim_last)
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
+            self.normalized_shape = None
+        
         self.reset_parameters()
 
     def reset_parameters(self):
