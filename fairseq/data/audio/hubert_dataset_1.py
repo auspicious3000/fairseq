@@ -211,6 +211,8 @@ class HubertDataset_1(FairseqDataset):
         coin = (rng.random() > 0.5)
         ratio_pr = coin*ratio_pr + (1-coin)*(1/ratio_pr)
         
+        if lo==50:
+            lo=75
         ss = parselmouth.praat.call(s, "Change gender", 
                                     lo, hi, 
                                     ratio_fs, 
@@ -220,7 +222,7 @@ class HubertDataset_1(FairseqDataset):
 
     def get_audio(self, index):
         import soundfile as sf
-
+    
         fileName = self.audio_names[index]
         spk = fileName.split('/')[1]
         wav_path = os.path.join(self.audio_root, fileName)
@@ -230,8 +232,10 @@ class HubertDataset_1(FairseqDataset):
         assert wav.ndim == 1, wav.ndim
         try:
             wav = self.random_formant_f0(wav, cur_sample_rate, spk)
-        except:
-            print(f'shabi: {fileName}')
+        except UserWarning:
+            print(f"Praat warining - {fileName}")
+        except RuntimeError:
+            print(f"Praat Error - {fileName}")
         wav = self.random_eq(wav, cur_sample_rate)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)

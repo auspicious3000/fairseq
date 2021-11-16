@@ -40,5 +40,5 @@ class CondLayerNorm(Module):
             input, input.size(), weight, bias, self.eps)
 
     def extra_repr(self):
-        return '{normalized_shape}, eps={eps}, ' \
+        return '{dim_last}, eps={eps}, ' \
             'elementwise_affine={elementwise_affine}'.format(**self.__dict__)
