@@ -142,7 +142,7 @@ class HubertDataset_1(FairseqDataset):
         with open(spk2info, "rb") as f:
             spk2info = pickle.load(f)
         self.spk2info = spk2info[manifest_path.split('/')[-1][:-4]]
-        self.rng = np.random.default_rng(666)
+        self.rng = np.random.default_rng()
         self.Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
         
         self.audio_root, self.audio_names, inds, tot, self.sizes = load_audio(
