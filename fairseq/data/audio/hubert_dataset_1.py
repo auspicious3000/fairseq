@@ -110,13 +110,12 @@ def verify_label_lengths(
         )
         
 
-rng = np.random.default_rng(666)
+
 import parselmouth
 import warnings
 warnings.filterwarnings("error")
 from scipy.signal import sosfilt
 Qmin, Qmax = 2, 5
-Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
 
 
 class HubertDataset_1(FairseqDataset):
@@ -143,6 +142,9 @@ class HubertDataset_1(FairseqDataset):
         with open(spk2info, "rb") as f:
             spk2info = pickle.load(f)
         self.spk2info = spk2info[manifest_path.split('/')[-1][:-4]]
+        self.rng = np.random.default_rng(666)
+        self.Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
+        
         self.audio_root, self.audio_names, inds, tot, self.sizes = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
         )
@@ -188,10 +190,10 @@ class HubertDataset_1(FairseqDataset):
         )
         
     def random_eq(self, wav, sr):
-        z = rng.uniform(0, 1, size=(10,))
+        z = self.rng.uniform(0, 1, size=(10,))
         Q = Qmin * (Qmax / Qmin)**z
-        G = rng.uniform(-12, 12, size=(10,))
-        sos = params2sos(G, Fc, Q, sr)
+        G = self.rng.uniform(-12, 12, size=(10,))
+        sos = params2sos(G, self.Fc, Q, sr)
         wav = sosfilt(sos, wav)
         return wav
     
@@ -199,18 +201,22 @@ class HubertDataset_1(FairseqDataset):
         s = parselmouth.Sound(wav, sampling_frequency=sr)
         _, (lo, hi, f0_med) = self.spk2info[spk]
         
-        ratio_fs = rng.uniform(1, 1.4)
-        coin = (rng.random() > 0.5)
+        ratio_fs = self.rng.uniform(1, 1.4)
+        coin = (self.rng.random() > 0.5)
         ratio_fs = coin*ratio_fs + (1-coin)*(1/ratio_fs)
         
-        ratio_ps = rng.uniform(1, 2)
-        coin = (rng.random() > 0.5)
+        ratio_ps = self.rng.uniform(1, 2)
+        coin = (self.rng.random() > 0.5)
         ratio_ps = coin*ratio_ps + (1-coin)*(1/ratio_ps)
         
-        ratio_pr = rng.uniform(1, 1.5)
-        coin = (rng.random() > 0.5)
+        ratio_pr = self.rng.uniform(1, 1.5)
+        coin = (self.rng.random() > 0.5)
         ratio_pr = coin*ratio_pr + (1-coin)*(1/ratio_pr)
         
+        if lo==50:
+            lo=75
+        if spk=="1447":
+            lo, hi = 70, 400
         ss = parselmouth.praat.call(s, "Change gender", 
                                     lo, hi, 
                                     ratio_fs, 
@@ -220,7 +226,7 @@ class HubertDataset_1(FairseqDataset):
 
     def get_audio(self, index):
         import soundfile as sf
-
+    
         fileName = self.audio_names[index]
         spk = fileName.split('/')[1]
         wav_path = os.path.join(self.audio_root, fileName)
@@ -230,8 +236,10 @@ class HubertDataset_1(FairseqDataset):
         assert wav.ndim == 1, wav.ndim
         try:
             wav = self.random_formant_f0(wav, cur_sample_rate, spk)
-        except:
-            print(f'shabi: {fileName}')
+        except UserWarning:
+            print(f"Praat warining - {fileName}")
+        except RuntimeError:
+            print(f"Praat Error - {fileName}")
         wav = self.random_eq(wav, cur_sample_rate)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)
