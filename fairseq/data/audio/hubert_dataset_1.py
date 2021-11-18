@@ -216,7 +216,7 @@ class HubertDataset_1(FairseqDataset):
         if lo==50:
             lo=75
         if spk=="1447":
-            lo, hi = 70, 400
+            lo, hi = 60, 400
         ss = parselmouth.praat.call(s, "Change gender", 
                                     lo, hi, 
                                     ratio_fs, 
