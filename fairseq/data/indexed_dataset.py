@@ -118,7 +118,11 @@ _code_to_dtype = {
     3: np.int16,
     4: np.int32,
     5: np.int64,
+<<<<<<< HEAD
     6: np.float64,
+=======
+    6: float,
+>>>>>>> 50874038b27ceacb20f3305c0d473cce2e6bc1bc
     7: np.double,
     8: np.uint16,
     9: np.uint32,
