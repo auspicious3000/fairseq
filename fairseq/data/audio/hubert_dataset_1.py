@@ -140,7 +140,8 @@ class HubertDataset_1(FairseqDataset):
         single_target: bool = False,
         spk2info = None
     ):
-        spk2info = pickle.load(open(spk2info, "rb"))
+        with open(spk2info, "rb") as f:
+            spk2info = pickle.load(f)
         self.spk2info = spk2info[manifest_path.split('/')[-1][:-4]]
         self.audio_root, self.audio_names, inds, tot, self.sizes = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
