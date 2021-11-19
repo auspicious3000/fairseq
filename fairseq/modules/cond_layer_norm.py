@@ -27,7 +27,6 @@ class CondLayerNorm(Module):
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
             self.normalized_shape = None
-        
         self.reset_parameters()
 
     def reset_parameters(self):
