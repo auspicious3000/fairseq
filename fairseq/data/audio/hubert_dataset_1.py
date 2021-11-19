@@ -234,13 +234,13 @@ class HubertDataset_1(FairseqDataset):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        # try:
-        #     wav = self.random_formant_f0(wav, cur_sample_rate, spk)
-        # except UserWarning:
-        #     print(f"Praat warining - {fileName}")
-        # except RuntimeError:
-        #     print(f"Praat Error - {fileName}")
-        # wav = self.random_eq(wav, cur_sample_rate)
+        try:
+            wav = self.random_formant_f0(wav, cur_sample_rate, spk)
+        except UserWarning:
+            print(f"Praat warining - {fileName}")
+        except RuntimeError:
+            print(f"Praat Error - {fileName}")
+        wav = self.random_eq(wav, cur_sample_rate)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)
         spk_emb, _ = self.spk2info[spk]
