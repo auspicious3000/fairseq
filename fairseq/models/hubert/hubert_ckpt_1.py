@@ -184,5 +184,5 @@ class HubertCkpt1(BaseFairseqModel):
         return self.hubertmodel_1.get_extra_losses(net_output)
 
     def remove_pretraining_modules(self):
-        return self.hubertmodel_1.remove_pretraining_modules(net_output)
+        return self.hubertmodel_1.remove_pretraining_modules()
 
