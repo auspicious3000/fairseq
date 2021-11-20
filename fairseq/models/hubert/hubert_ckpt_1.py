@@ -132,7 +132,7 @@ class HubertCkpt1(BaseFairseqModel):
         return self.hubertmodel_1.apply_mask(x, padding_mask, target_list)
     
     def compute_nce(self, x, pos, negs):
-        return self.hubertmodel_1.compute_nce(x, pos, neg)
+        return self.hubertmodel_1.compute_nce(x, pos, negs)
     
     def forward_features(self, source: torch.Tensor) -> torch.Tensor:
         return self.hubertmodel_1.forward_features(source)
