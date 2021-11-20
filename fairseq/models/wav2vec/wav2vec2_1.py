@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import (
+    LayerNorm,
     CondLayerNorm,
     MultiheadAttention,
     SamePad,
@@ -75,7 +76,8 @@ class TransformerEncoder_1(nn.Module):
             )
         
         self.layer_norm_first = args.layer_norm_first
-        self.layer_norm = CondLayerNorm(self.embedding_dim)
+        self.layer_norm = LayerNorm(self.embedding_dim)
+        self.cond_layer_norm = CondLayerNorm(self.embedding_dim)
         self.layerdrop = args.encoder_layerdrop
         self.num_layers = args.encoder_layers
 
@@ -85,7 +87,7 @@ class TransformerEncoder_1(nn.Module):
         x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer)
 
         if self.layer_norm_first and layer is None:
-            x = self.layer_norm(x, spk_emb)
+            x = self.cond_layer_norm(x, spk_emb)
 
         return x, layer_results
 
@@ -102,7 +104,7 @@ class TransformerEncoder_1(nn.Module):
         x = x.transpose(0, 1)
 
         if not self.layer_norm_first:
-            x = self.layer_norm(x, spk_emb)
+            x = self.layer_norm(x)
 
         x = F.dropout(x, p=self.dropout, training=self.training)
 

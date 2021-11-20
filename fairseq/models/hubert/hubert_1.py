@@ -524,6 +524,7 @@ class HubertModel_1(BaseFairseqModel):
     def extract_features(
         self,
         source: torch.Tensor,
+        spk_emb: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
         mask: bool = False,
         ret_conv: bool = False,
@@ -531,6 +532,7 @@ class HubertModel_1(BaseFairseqModel):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         res = self.forward(
             source,
+            spk_emb,
             padding_mask=padding_mask,
             mask=mask,
             features_only=True,
