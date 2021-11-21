@@ -95,7 +95,7 @@ class TransformerEncoder_1(nn.Module):
         return x, layer_results
 
     def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None, detach_features_at_layer=None):
-
+        assert detach_features_at_layer is None, f'detach_features_at_layer {detach_features_at_layer}'
         if padding_mask is not None:
             x = index_put(x, padding_mask, 0)
 
@@ -110,6 +110,7 @@ class TransformerEncoder_1(nn.Module):
             x = self.layer_norm(x, spk_emb)
 
         x = F.dropout(x, p=self.dropout, training=self.training)
+        x_connected, z = x, None
 
         layer_results = []
         r = None
@@ -122,8 +123,8 @@ class TransformerEncoder_1(nn.Module):
                 else:
                     x_connected, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
                     x = x_connected
-                if tgt_layer is not None:
-                    layer_results.append((x_connected, z))
+                # if tgt_layer is not None:
+            layer_results.append((x_connected, z))
             if i == tgt_layer:
                 r = x_connected
                 break
