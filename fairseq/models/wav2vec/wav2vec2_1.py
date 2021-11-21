@@ -81,15 +81,20 @@ class TransformerEncoder_1(nn.Module):
 
         self.apply(init_bert_params)
 
-    def forward(self, x, spk_emb, padding_mask=None, layer=None):
-        x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer)
+    def forward(
+        self, x, spk_emb, padding_mask=None, layer=None, 
+        detach_features_at_layer=None # 0 based
+    ):
+        if detach_features_at_layer is not None:
+            assert detach_features_at_layer < self.num_layers, f'{detach_features_at_layer} < {self.num_layers}'
+        x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer, detach_features_at_layer)
 
         if self.layer_norm_first and layer is None:
             x = self.layer_norm(x, spk_emb)
 
         return x, layer_results
 
-    def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None):
+    def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None, detach_features_at_layer=None):
 
         if padding_mask is not None:
             x = index_put(x, padding_mask, 0)
@@ -112,13 +117,15 @@ class TransformerEncoder_1(nn.Module):
             dropout_probability = np.random.random()
             if not self.training or (dropout_probability > self.layerdrop):
                 if i < self.num_layers:
-                    x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
+                    x_connected, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
+                    x = x_connected.detach() if detach_features_at_layer is not None and i == detach_features_at_layer else x_connected
                 else:
-                    x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
+                    x_connected, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
+                    x = x_connected
                 if tgt_layer is not None:
-                    layer_results.append((x, z))
+                    layer_results.append((x_connected, z))
             if i == tgt_layer:
-                r = x
+                r = x_connected
                 break
 
         if r is not None:

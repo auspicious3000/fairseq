@@ -422,6 +422,7 @@ class HubertModel_1(BaseFairseqModel):
         mask: bool = True,
         features_only: bool = False,
         output_layer: Optional[int] = None,
+        detach_features: bool = False
     ) -> Dict[str, torch.Tensor]:
         """output layer is 1-based"""
         features = self.forward_features(source)
@@ -456,15 +457,18 @@ class HubertModel_1(BaseFairseqModel):
         # x: (B, T, D), float
         # padding_mask: (B, T), bool
         # mask_indices: (B, T), bool
-        x, _ = self.encoder(
+        x, layer_results = self.encoder(
             x,
             spk_emb,
             padding_mask=padding_mask,
-            layer=None if output_layer is None else output_layer - 1
+            layer=None if output_layer is None else output_layer - 1,
+            detach_features_at_layer=None if not detach_features else self.encoder.num_layers-1
         )
 
+        x_no_speaker_emb, _ = layer_results[self.encoder.num_layers-1]
+
         if features_only:
-            return {"x": x, "padding_mask": padding_mask, "features": features}
+            return {"x": x, "padding_mask": padding_mask, "features": features, "x_no_speaker_emb": x_no_speaker_emb}
 
         def compute_pred(proj_x, target, label_embs):
             # compute logits for the i-th label set
@@ -518,6 +522,10 @@ class HubertModel_1(BaseFairseqModel):
             "logit_u_list": logit_u_list,
             "padding_mask": padding_mask,
             "features_pen": features_pen,
+            "x": x,
+            "padding_mask": padding_mask,
+            "features": features,
+            "x_no_speaker_emb": x_no_speaker_emb
         }
         return result
 
