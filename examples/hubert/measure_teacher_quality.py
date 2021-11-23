@@ -101,7 +101,7 @@ def read_lab(tsv_path, lab_path, pad_len=0, upsample=1):
     tsv is needed to retrieve the uids for the labels
     """
     with open(tsv_path) as f:
-        f.readline()
+        #f.readline()
         uids = [op.splitext(op.basename(line.rstrip().split()[0]))[0] for line in f]
     with open(lab_path) as f:
         labs_list = [pad(line.rstrip().split(), pad_len).repeat(upsample) for line in f]
@@ -195,9 +195,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("tsv_dir")
-    parser.add_argument("lab_dir")
-    parser.add_argument("lab_name")
+    parser.add_argument("--tsv_dir")
+    parser.add_argument("--lab_dir")
+    parser.add_argument("--lab_name")
     parser.add_argument("--lab_sets", default=["valid"], type=str, nargs="+")
     parser.add_argument(
         "--phn_dir",
