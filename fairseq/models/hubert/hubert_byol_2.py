@@ -57,19 +57,7 @@ MASKING_DISTRIBUTION_CHOICES = ChoiceEnum(
 )
 
 @dataclass
-class Hubert2Config(HubertConfig_1):
-
-    # label_embs_concat_warmup_updates: int = field(
-    #     default=0, metadata={"help": "finetune label_embs_concat for this many updates"}
-    # )
-
-    freeze_finetune_updates: int = field(
-        default=0, metadata={"help": "dont finetune hubert for this many updates"}
-    )
-
-    pretrained_hubert_path: str = field(
-        default=MISSING, metadata={"help": "path to hubert model"}
-    )
+class HubertConfig_2(HubertConfig_1):
 
     max_update: int = field(
         default=400000, metadata={"help": "max number of updates"}
@@ -83,11 +71,22 @@ class Hubert2Config(HubertConfig_1):
         default=1, metadata={"help": "update target for this many updates"}
     )
 
-@register_model("hubertbyol2", dataclass=Hubert2Config)
-class Hubert2(BaseFairseqModel):
+    pretrained_hubert_path: str = field(
+        default=MISSING, metadata={"help": "path to hubert model"}
+    )
+
+    load_from_pretrained: bool = field(
+        default=False, metadata={"help": "load hubert from pretrained"}
+    )
+
+
+
+
+@register_model("hubertbyol2", dataclass=HubertConfig_2)
+class HubertByol2(BaseFairseqModel):
     def __init__(
         self, 
-        cfg: Hubert2Config, 
+        cfg: HubertConfig_2, 
         task_cfg: HubertPretrainingConfig,
         dictionaries: List[Dictionary],
     ):
@@ -96,21 +95,19 @@ class Hubert2(BaseFairseqModel):
         self.hubertmodel_online = HubertModel_1(cfg, task_cfg, dictionaries)
         self.hubertmodel_target = HubertModel_1(cfg, task_cfg, dictionaries)
 
-        pretrained_hubert_path = cfg.pretrained_hubert_path
-        models, _cfg, _task = fairseq.checkpoint_utils.load_model_ensemble_and_task([pretrained_hubert_path])
-        model = models[0]
-        hubert_state_dict = {k: v for k, v in model.state_dict().items() if 'label_embs_concat' != k}
-        missing_keys_online, unexpected_keys_online = self.hubertmodel_online.load_state_dict(hubert_state_dict, strict=False)
-        print('online model: missing_keys', missing_keys_online, 'unexpected_keys', unexpected_keys_online)
-        missing_keys_target, unexpected_keys_target = self.hubertmodel_target.load_state_dict(hubert_state_dict, strict=False)
-        print('target model: missing_keys', missing_keys_target, 'unexpected_keys', unexpected_keys_target)
+        if cfg.load_from_pretrained:
+            pretrained_hubert_path = cfg.pretrained_hubert_path
+            models, _cfg, _task = fairseq.checkpoint_utils.load_model_ensemble_and_task([pretrained_hubert_path])
+            model = models[0]
+            hubert_state_dict = {k: v for k, v in model.state_dict().items() if 'label_embs_concat' != k}
+            missing_keys_online, unexpected_keys_online = self.hubertmodel_online.load_state_dict(hubert_state_dict, strict=False)
+            print('online model: missing_keys', missing_keys_online, 'unexpected_keys', unexpected_keys_online)
+            missing_keys_target, unexpected_keys_target = self.hubertmodel_target.load_state_dict(hubert_state_dict, strict=False)
+            print('target model: missing_keys', missing_keys_target, 'unexpected_keys', unexpected_keys_target)
 
         print('fix target model...')
         for parameter in self.hubertmodel_target.parameters():
             parameter.requires_grad = False
-
-        self.missing_keys_online, self.unexpected_keys_online = missing_keys_online, unexpected_keys_online
-        self.missing_keys_target, self.unexpected_keys_target = missing_keys_target, unexpected_keys_target
 
         self.projector = TransformerSentenceEncoderLayer(
             embedding_dim=cfg.encoder_embed_dim,
@@ -137,20 +134,16 @@ class Hubert2(BaseFairseqModel):
         self.max_update = cfg.max_update
         self.base_target_ema = cfg.base_target_ema
         self.update_target_frequency = cfg.update_target_frequency
-        self.freeze_finetune_updates = cfg.freeze_finetune_updates
-        # self.label_embs_concat_warmup_updates = cfg.label_embs_concat_warmup_updates
-
-        self.freeze_pretrained_paramters()
-        assert self.pretrained_freezed == True
 
         self.num_updates = 0
 
     @classmethod
-    def build_model(cls, cfg: Hubert2Config, task: HubertPretrainingTask):
+    def build_model(cls, cfg: HubertConfig_2, task: HubertPretrainingTask):
         """Build a new model instance."""
-        return Hubert2(cfg, task.cfg, task.dictionaries)
+        return HubertByol2(cfg, task.cfg, task.dictionaries)
 
     def compute_decay(self, num_updates):
+        # from BYOL github code https://github.com/deepmind/deepmind-research/blob/2c7c401024c42c4fb1aa20a8b0471d2e6b480906/byol/utils/schedules.py#L20
         def _cosine_decay(global_step, max_steps, initial_value):
             """Simple implementation of cosine decay from TF1."""
             global_step = min(global_step, max_steps)
@@ -177,23 +170,6 @@ class Hubert2(BaseFairseqModel):
             assert not missing_keys_target, f'missing_keys_target {missing_keys_target} is not empty'
             assert not unexpected_keys_target, f'unexpected_keys_target {unexpected_keys_target} is not empty'
 
-    def release_all_parameters(self):
-        if self.pretrained_freezed:
-            print('release all parameters')
-            for n, parameter in self.hubertmodel_online.named_parameters():
-                parameter.requires_grad = True
-        self.pretrained_freezed = False
-    
-    def freeze_pretrained_paramters(self):
-        for n, parameter in self.hubertmodel_online.named_parameters():
-            if n not in self.missing_keys_online: 
-                # if paramter names are in pretrained model, do not update their parameter 
-                parameter.requires_grad = False
-            else:
-                print('do not freeze parameter:', n)
-                parameter.requires_grad = True
-        self.pretrained_freezed = True
-
     def compute_representation_loss(
         self, 
         source_1: torch.Tensor,
@@ -207,7 +183,7 @@ class Hubert2(BaseFairseqModel):
     ):
         result_online = self.hubertmodel_online(source_1, spk_emb, target_list, padding_mask, mask, features_only, output_layer, detach_features=False)
         with torch.no_grad():
-            result_target = self.hubertmodel_target(source_2, spk_emb, target_list, padding_mask, mask, features_only=True, output_layer=output_layer)
+            result_target = self.hubertmodel_target(source_2, spk_emb, target_list, padding_mask, mask, features_only=True, output_layer=output_layer, detach_features=False)
         embedding_online, padding_mask_online = result_online['x_no_speaker_emb'], result_online['padding_mask']
 
         proj_out, _ = self.projector(embedding_online, self_attn_padding_mask=padding_mask_online, need_weights=False)
@@ -217,7 +193,6 @@ class Hubert2(BaseFairseqModel):
         assert torch.all(padding_mask_online == padding_mask_target)
 
         online_repr = F.normalize(pred_out[~padding_mask_online.T], p=2.0, dim=-1, eps=1e-12) # -1 is the hidden dimension
-        temp = (online_repr**2).sum(dim=-1)
 
         target_repr = F.normalize(embedding_target[~padding_mask_target.T], p=2.0, dim=-1, eps=1e-12)
         repr_loss = F.mse_loss(online_repr, target_repr, reduction='mean')
@@ -235,25 +210,17 @@ class Hubert2(BaseFairseqModel):
         features_only: bool = False,
         output_layer: Optional[int] = None,
     ) -> Dict[str, torch.Tensor]:
-        finetune_hubert = self.num_updates >= self.freeze_finetune_updates
-        if finetune_hubert:
-            self.release_all_parameters()
-            assert not self.pretrained_freezed
-        if finetune_hubert:
 
-            result_1 = self.compute_representation_loss(source_1, source_2, spk_emb, target_list, padding_mask, mask, features_only, output_layer)
-            repr_loss_1, result_online = result_1['repr_loss'], result_1['result_online']
+        result_1 = self.compute_representation_loss(source_1, source_2, spk_emb, target_list, padding_mask, mask, features_only, output_layer)
+        repr_loss_1, result_online = result_1['repr_loss'], result_1['result_online']
 
-            result_2 = self.compute_representation_loss(source_2, source_1, spk_emb, target_list, padding_mask, mask, features_only=True, output_layer=output_layer)
-            repr_loss_2 = result_2['repr_loss']
+        result_2 = self.compute_representation_loss(source_2, source_1, spk_emb, target_list, padding_mask, mask, features_only=True, output_layer=output_layer)
+        repr_loss_2 = result_2['repr_loss']
 
-            repr_loss = repr_loss_1 + repr_loss_2
-            result_online['repr_loss'] = repr_loss
-            return result_online
-        
-        else:
-            result_online = self.hubertmodel_online(source_1, spk_emb, target_list, padding_mask, mask, features_only, output_layer, detach_features=False)
-            return result_online
+        repr_loss = repr_loss_1 + repr_loss_2
+        result_online['repr_loss'] = repr_loss
+        return result_online
+
 
     def get_logits(self, net_output, is_masked=True):
         return self.hubertmodel_online.get_logits(net_output, is_masked)

@@ -48,7 +48,7 @@ if [ ${stage} -le 12 ] && [ ${stop_stage} -ge 12 ]; then
     spk2info="$(pwd)/manifest/librispeech/spk2info.dict"
     hubert_path="$(pwd)/models/hubert/hubert_base_ls960.pt"
     max_update=100000
-    expdir=$(pwd)/outputs/v02
+    expdir=$(pwd)/outputs/v02_test
     mkdir -p $expdir
     export SLURM_NNODES=1
     export SLURM_NTASKS_PER_NODE=1

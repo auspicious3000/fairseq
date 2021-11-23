@@ -523,7 +523,6 @@ class HubertModel_1(BaseFairseqModel):
             "padding_mask": padding_mask,
             "features_pen": features_pen,
             "x": x,
-            "padding_mask": padding_mask,
             "features": features,
             "x_no_speaker_emb": x_no_speaker_emb
         }

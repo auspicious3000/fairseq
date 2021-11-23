@@ -35,7 +35,7 @@ task:
   spk2info: ???
 
 dataset:
-  num_workers: 6
+  num_workers: 8
   max_tokens: 1400000
   skip_invalid_size_inputs_valid_test: true
   validate_interval: 5
@@ -45,7 +45,7 @@ criterion:
   _name: hubert_2
   pred_masked_weight: 1.0
   pred_nomask_weight: 0.0
-  loss_weights: [10,]
+  loss_weights: [10, 1] # [feature_pen, repr_loss]
 
 optimization:
   max_update: 400000

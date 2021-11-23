@@ -85,6 +85,8 @@ class HubertCriterion_2(FairseqCriterion):
         if self.loss_weights is not None:
             assert hasattr(model, "get_extra_losses")
             extra_losses, names = model.get_extra_losses(net_output)
+
+            
             if torch.is_tensor(extra_losses):
                 extra_losses = [extra_losses]
                 names = [names]
