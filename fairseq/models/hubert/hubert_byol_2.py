@@ -79,7 +79,17 @@ class HubertConfig_2(HubertConfig_1):
         default=False, metadata={"help": "load hubert from pretrained"}
     )
 
+    projector_hidden_size: int = field(
+        default=4096, metadata={"help": "projector hidden size"}
+    )
 
+    predictor_hidden_size: int = field(
+        default=4096, metadata={"help": "predictor hidden size"}
+    )
+
+    output_size: int = field(
+        default=768, metadata={"help": "predictor outpu size of predictor and projector"}
+    )
 
 
 @register_model("hubertbyol2", dataclass=HubertConfig_2)
@@ -109,27 +119,9 @@ class HubertByol2(BaseFairseqModel):
         for parameter in self.hubertmodel_target.parameters():
             parameter.requires_grad = False
 
-        self.projector = TransformerSentenceEncoderLayer(
-            embedding_dim=cfg.encoder_embed_dim,
-            ffn_embedding_dim=cfg.encoder_ffn_embed_dim,
-            num_attention_heads=cfg.encoder_attention_heads,
-            dropout=cfg.dropout,
-            attention_dropout=cfg.attention_dropout,
-            activation_dropout=cfg.activation_dropout,
-            activation_fn=cfg.activation_fn,
-            layer_norm_first=cfg.layer_norm_first,
-        )
-
-        self.predictor = TransformerSentenceEncoderLayer(
-            embedding_dim=cfg.encoder_embed_dim,
-            ffn_embedding_dim=cfg.encoder_ffn_embed_dim,
-            num_attention_heads=cfg.encoder_attention_heads,
-            dropout=cfg.dropout,
-            attention_dropout=cfg.attention_dropout,
-            activation_dropout=cfg.activation_dropout,
-            activation_fn=cfg.activation_fn,
-            layer_norm_first=cfg.layer_norm_first,
-        )
+        self.projector_online = MLP(cfg.encoder_embed_dim, cfg.projector_hidden_size, cfg.output_size)
+        self.predictor_online = MLP(cfg.encoder_embed_dim, cfg.projector_hidden_size, cfg.output_size)
+        self.projector_target = MLP(cfg.encoder_embed_dim, cfg.projector_hidden_size, cfg.output_size)
 
         self.max_update = cfg.max_update
         self.base_target_ema = cfg.base_target_ema
@@ -153,6 +145,12 @@ class HubertByol2(BaseFairseqModel):
         decay = _cosine_decay(num_updates, self.max_update, 1.)
         return 1. - (1. - self.base_target_ema) * decay
 
+    def merge_state_dict(self, sd1, sd2, tau):
+        merged_state_dict = {}
+        for k in sd1:
+            merged_state_dict[k] = (tau * sd1[k] + (1-tau) * sd2[k]).detach()
+        return merged_state_dict
+
     def set_num_updates(self, num_updates):
         """Set the number of parameters updates."""
         super().set_num_updates(num_updates)
@@ -161,14 +159,19 @@ class HubertByol2(BaseFairseqModel):
         tau = self.compute_decay(num_updates)
 
         if self.num_updates % self.update_target_frequency == 0:
-            state_dict_online = {k: v for k, v in self.hubertmodel_online.state_dict().items()}
-            state_dict_target = {k: v for k, v in self.hubertmodel_target.state_dict().items()}
-            merged_state_dict = {}
-            for k in state_dict_online:
-                merged_state_dict[k] = (tau * state_dict_target[k] + (1-tau) * state_dict_online[k]).detach()
+            # merge online and target hubert model
+            state_dict_online = self.hubertmodel_online.state_dict()
+            state_dict_target = self.hubertmodel_target.state_dict()
+            merged_state_dict = self.merge_state_dict(state_dict_target, state_dict_online, tau)
             missing_keys_target, unexpected_keys_target = self.hubertmodel_target.load_state_dict(merged_state_dict, strict=True)
             assert not missing_keys_target, f'missing_keys_target {missing_keys_target} is not empty'
             assert not unexpected_keys_target, f'unexpected_keys_target {unexpected_keys_target} is not empty'
+            # merge online and target projector
+            state_dict_online = self.projector_online.state_dict()
+            state_dict_target = self.projector_target.state_dict()
+            merged_state_dict_projector = self.merge_state_dict(state_dict_target, state_dict_online, tau)
+            self.projector_target.load_state_dict(merged_state_dict_projector, strict=True)
+
 
     def compute_representation_loss(
         self, 
@@ -181,20 +184,24 @@ class HubertByol2(BaseFairseqModel):
         features_only: bool = False,
         output_layer: Optional[int] = None,
     ):
+        # pass view 1 and view 2 to online and target networks respectively
         result_online = self.hubertmodel_online(source_1, spk_emb, target_list, padding_mask, mask, features_only, output_layer, detach_features=False)
         with torch.no_grad():
             result_target = self.hubertmodel_target(source_2, spk_emb, target_list, padding_mask, mask, features_only=True, output_layer=output_layer, detach_features=False)
+        # project and predict using online embeddingg
         embedding_online, padding_mask_online = result_online['x_no_speaker_emb'], result_online['padding_mask']
-
-        proj_out, _ = self.projector(embedding_online, self_attn_padding_mask=padding_mask_online, need_weights=False)
-        pred_out, _ = self.predictor(proj_out, self_attn_padding_mask=padding_mask_online, need_weights=False)
-
+        proj_out_online = self.projector_online(embedding_online)
+        pred_out_online = self.predictor_online(proj_out_online)
+        # project using target embeddingg
         embedding_target, padding_mask_target = result_target['x_no_speaker_emb'].detach(), result_target['padding_mask']
         assert torch.all(padding_mask_online == padding_mask_target)
-
-        online_repr = F.normalize(pred_out[~padding_mask_online.T], p=2.0, dim=-1, eps=1e-12) # -1 is the hidden dimension
-
-        target_repr = F.normalize(embedding_target[~padding_mask_target.T], p=2.0, dim=-1, eps=1e-12)
+        proj_out_target = self.projector_target(embedding_target)
+        assert proj_out_online.shape == proj_out_target.shape, f'{proj_out_online.shape} == {proj_out_target.shape}'
+        assert pred_out_online.shape == proj_out_target.shape, f'{pred_out_online.shape} == {proj_out_target.shape}'
+        # normalize online predcitor output and target projector output
+        online_repr = F.normalize(pred_out_online[~padding_mask_online.T], p=2.0, dim=-1, eps=1e-12) # -1 is the hidden dimension
+        target_repr = F.normalize(proj_out_target[~padding_mask_target.T], p=2.0, dim=-1, eps=1e-12)
+        # compute loss
         repr_loss = F.mse_loss(online_repr, target_repr, reduction='mean')
         
         return {'repr_loss': repr_loss, 'result_online': result_online}
@@ -236,3 +243,18 @@ class HubertByol2(BaseFairseqModel):
             names.append("repr_loss")
 
         return extra_losses, names
+
+class MLP(nn.Module):
+    def __init__(self, in_channels, mlp_hidden_size, projection_size):
+        super(MLP, self).__init__()
+        self.l1 = nn.Linear(in_channels, mlp_hidden_size, )
+        self.bn = nn.BatchNorm1d(mlp_hidden_size, )
+        self.relu = nn.ReLU(inplace=True)
+        self.l2 = nn.Linear(mlp_hidden_size, projection_size)
+
+    def forward(self, x):
+        x = self.l1(x).transpose(1,2)
+        x = self.bn(x).transpose(1,2)
+        x = self.relu(x)
+        x = self.l2(x)
+        return x

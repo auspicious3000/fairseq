@@ -86,6 +86,9 @@ model:
   max_update: 400000
   base_target_ema: 0.999
   update_target_frequency: 1
+  projector_hidden_size: 4096
+  predictor_hidden_size: 4096
+  output_size: 768
 
 hydra:
   job:
