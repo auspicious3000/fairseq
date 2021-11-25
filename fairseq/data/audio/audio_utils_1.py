@@ -175,31 +175,12 @@ def params2sos(G, Fc, Q, fs):
     return sos
 
 
-
-def plot_tf(x, fs=44100, plot_title=None, to_file=""):
-
-    if not plot_title:
-        plot_title = 'Digital filter frequency response'
-
-    # convert eq params to second order sections
-    sos = params2sos(x, fs)
-
-    # calculate filter response
-    f, h = sg.sosfreqz(sos, worN=2048, fs=fs)
-
-    # plot the magnitude respose
-    fig, ax1 = plt.subplots()
-    ax1.set_title(plot_title)
-    ax1.semilogx(f, 20 * np.log10(abs(h)), 'b')
-    ax1.set_ylabel('Amplitude [dB]', color='b')
-    ax1.set_xlabel('Frequency [Hz]')
-    ax1.set_xlim([22.0, 20000.0])
-    ax1.set_ylim([-20, 20])
-    ax1.grid() # note: make this look prettier
-    
-    if to_file:
-        plt.savefig(to_file)
-    else:
-        plt.show()
-    plt.close()
+import parselmouth
+def change_gender(x, fs, lo, hi, ratio_fs, ratio_ps, ratio_pr):
+    s = parselmouth.Sound(x, sampling_frequency=fs)
+    f0 = s.to_pitch_ac(pitch_floor=lo, pitch_ceiling=hi, time_step=0.8/lo)
+    f0_np = f0.selected_array['frequency']
+    f0_med = np.median(f0_np[f0_np!=0]).item()
+    ss = parselmouth.praat.call([s, f0], "Change gender", ratio_fs, f0_med*ratio_ps, ratio_pr, 1.0)
+    return ss.values.squeeze(0)
 

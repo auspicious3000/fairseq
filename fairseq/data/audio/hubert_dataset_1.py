@@ -16,7 +16,8 @@ import torch
 import torch.nn.functional as F
 from fairseq.data import data_utils
 from fairseq.data.fairseq_dataset import FairseqDataset
-from fairseq.data.audio.eq_utils import params2sos
+from fairseq.data.audio.audio_utils_1 import params2sos
+from fairseq.data.audio.audio_utils_1 import change_gender
 from fairseq.pdb import set_trace
 
 logger = logging.getLogger(__name__)
@@ -139,9 +140,11 @@ class HubertDataset_1(FairseqDataset):
         single_target: bool = False,
         spk2info = None
     ):
+        self.split = manifest_path.split('/')[-1][:-4]
+        assert self.split in ['train', 'valid']
         with open(spk2info, "rb") as f:
             spk2info = pickle.load(f)
-        self.spk2info = spk2info[manifest_path.split('/')[-1][:-4]]
+        self.spk2info = spk2info[self.split]
         self.rng = np.random.default_rng()
         self.Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
         
@@ -198,8 +201,8 @@ class HubertDataset_1(FairseqDataset):
         return wav
     
     def random_formant_f0(self, wav, sr, spk):
-        s = parselmouth.Sound(wav, sampling_frequency=sr)
-        _, (lo, hi, f0_med) = self.spk2info[spk]
+        #s = parselmouth.Sound(wav, sampling_frequency=sr)
+        _, (lo, hi, _) = self.spk2info[spk]
         
         ratio_fs = self.rng.uniform(1, 1.4)
         coin = (self.rng.random() > 0.5)
@@ -217,12 +220,9 @@ class HubertDataset_1(FairseqDataset):
             lo=75
         if spk=="1447":
             lo, hi = 60, 400
-        ss = parselmouth.praat.call(s, "Change gender", 
-                                    lo, hi, 
-                                    ratio_fs, 
-                                    f0_med*ratio_ps, 
-                                    ratio_pr, 1.0)
-        return ss.values.squeeze(0)
+        ss = change_gender(wav, sr, lo, hi, ratio_fs, ratio_ps, ratio_pr)
+        
+        return ss
 
     def get_audio(self, index):
         import soundfile as sf
@@ -234,13 +234,14 @@ class HubertDataset_1(FairseqDataset):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        try:
-            wav = self.random_formant_f0(wav, cur_sample_rate, spk)
-        except UserWarning:
-            print(f"Praat warining - {fileName}")
-        except RuntimeError:
-            print(f"Praat Error - {fileName}")
-        wav = self.random_eq(wav, cur_sample_rate)
+        if self.split == 'train':
+            try:
+                wav = self.random_formant_f0(wav, cur_sample_rate, spk)
+            except UserWarning:
+                print(f"Praat warining - {fileName}")
+            except RuntimeError:
+                print(f"Praat Error - {fileName}")
+            wav = self.random_eq(wav, cur_sample_rate)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)
         spk_emb, _ = self.spk2info[spk]
