@@ -12,12 +12,13 @@ import fairseq
 import soundfile as sf
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 from feature_utils import get_path_iterator, dump_feature
 
-import pickle
-with open("/mnt/autovc_mrf/spk2emb_arctic.dict", "rb") as f:
-    spk2info = pickle.load(f)
+#import pickle
+#with open("/mnt/autovc_mrf/spk2emb_arctic.dict", "rb") as f:
+#    spk2info = pickle.load(f)
 
 
 logging.basicConfig(
@@ -49,10 +50,10 @@ class HubertFeatureReader(object):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        spk_emb, _, _, _ = spk2info[path.split('/')[4]]
+        #spk_emb, _, _, _ = spk2info[path.split('/')[4]]
         if ref_len is not None and abs(ref_len - len(wav)) > 160:
             logging.warning(f"ref {ref_len} != read {len(wav)} ({path})")
-        return wav, spk_emb
+        return wav, np.zeros((256,))
 
     def get_feats(self, path, ref_len=None):
         x, emb = self.read_audio(path, ref_len)
