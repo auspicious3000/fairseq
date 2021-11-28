@@ -184,3 +184,22 @@ def change_gender(x, fs, lo, hi, ratio_fs, ratio_ps, ratio_pr):
     ss = parselmouth.praat.call([s, f0], "Change gender", ratio_fs, f0_med*ratio_ps, ratio_pr, 1.0)
     return ss.values.squeeze(0)
 
+
+#def change_gender_1(x, fs, lo, hi, ratio_fs, ratio_ps, ratio_pr):
+#    s = parselmouth.Sound(x, sampling_frequency=fs)
+#    f0 = s.to_pitch_ac(pitch_floor=lo, pitch_ceiling=hi, time_step=0.8/lo)
+#    f0_np = f0.selected_array['frequency']
+#    f0_nonzero = f0_np[f0_np!=0]
+#    if np.size(f0_nonzero) == 0:
+#        print("No voiced segments detected!")
+#        return x
+#    f0_med = np.median(f0_nonzero).item()
+#    newMedian = f0_med * ratio_ps
+#    scaledMinimum = lo * newMedian / f0_med
+#    resultingMinimum = newMedian + (scaledMinimum - newMedian) * ratio_pr
+#    if resultingMinimum <= 0.0:
+#        print("Pitch manipulation would lead to negative pitch values!")
+#        return x
+#    ss = parselmouth.praat.call([s, f0], "Change gender", ratio_fs, newMedian, ratio_pr, 1.0)
+#    return ss.values.squeeze(0)
+
