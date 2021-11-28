@@ -41,3 +41,15 @@ if [ ${stage} -le 11 ] && [ ${stop_stage} -ge 11 ]; then
         model.label_rate=50 model.pretrained_hubert_path=${hubert_path}
 fi
 
+if [ ${stage} -le 13 ] && [ ${stop_stage} -ge 13 ]; then
+    echo "Stage 1: Training hubert3"
+    manifest_dir="$(pwd)/manifest/librispeech/meta"
+    label_dir="$(pwd)/manifest/librispeech/label_100_7"
+    spk2info="$(pwd)/manifest/librispeech/spk2info.dict"
+    expdir=$(pwd)/outputs/v03
+    python $(pwd)/../../fairseq_cli/hydra_train.py \
+        --config-dir $(pwd)/config/ssl_disentangle \
+        --config-name hubert3_librispeech \
+        hydra.run.dir=${expdir} common.log_file=train.log \
+        task.data=${manifest_dir} task.dict_dir=${label_dir} task.label_dir_train=${label_dir} task.label_dir_valid=${label_dir} task.spk2info=${spk2info} task.labels='["km"]' model.label_rate=50
+fi
