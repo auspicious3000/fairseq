@@ -34,6 +34,20 @@ class HubertCriterionConfig(FairseqDataclass):
         metadata={"help": "output keys to log"},
     )
 
+def cross_entropy(q, p, reduction='mean'):
+    # p is the ground truth distribution and q is the input logit before softmox
+    def entropy(p):
+        H_p = torch.zeros(p.shape).to(p)
+        H_p[p>0] = - (p[p>0] * p[p>0].log())
+        H_p = H_p.sum(dim=1)
+        return H_p
+    
+    KL_pq = F.kl_div(q.log_softmax(dim=1), p, reduction='none').sum(dim=1)
+    H_p = entropy(p)
+    ce = KL_pq + H_p
+    if reduction == 'none':
+        return ce
+    return ce.mean()
 
 @register_criterion("hubert", dataclass=HubertCriterionConfig)
 class HubertCriterion(FairseqCriterion):
@@ -62,7 +76,7 @@ class HubertCriterion(FairseqCriterion):
         targ_m_list = model.get_targets(net_output, True)
         assert self.pred_masked_weight == 0 or len(logp_m_list) > 0
         for i, (logp_m, targ_m) in enumerate(zip(logp_m_list, targ_m_list)):
-            loss_m = F.cross_entropy(logp_m, targ_m, reduction=reduction)
+            loss_m = cross_entropy(logp_m, targ_m, reduction=reduction)
             loss_m_list.append(loss_m)
             logging_output[f"loss_m_{i}"] = loss_m.detach().item()
         if self.pred_masked_weight > 0:
@@ -74,7 +88,7 @@ class HubertCriterion(FairseqCriterion):
         targ_u_list = model.get_targets(net_output, False)
         assert self.pred_nomask_weight == 0 or len(logp_u_list) > 0
         for i, (logp_u, targ_u) in enumerate(zip(logp_u_list, targ_u_list)):
-            loss_u = F.cross_entropy(logp_u, targ_u, reduction=reduction)
+            loss_u = cross_entropy(logp_u, targ_u, reduction=reduction)
             loss_u_list.append(loss_u)
             logging_output[f"loss_u_{i}"] = loss_u.detach().item()
         if self.pred_nomask_weight > 0:

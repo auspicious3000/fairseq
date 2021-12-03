@@ -5,4 +5,5 @@
 from .hubert import *  # noqa
 from .hubert_1 import *  # noqa
 from .hubert_ckpt_1 import *  # noqa
+from .hubert_4 import *
 from .hubert_asr import *  # noqa
