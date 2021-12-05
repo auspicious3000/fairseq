@@ -82,6 +82,7 @@ model:
   feature_grad_mult: 0.1
   untie_final_proj: true
   activation_dropout: 0.0
+  encoder_layers_1: 0
 
 hydra:
   job:

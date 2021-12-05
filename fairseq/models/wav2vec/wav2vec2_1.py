@@ -115,10 +115,10 @@ class TransformerEncoder_1(nn.Module):
             if not self.training or (dropout_probability > self.layerdrop):
                 if i < self.num_layers:
                     x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
-                else:
-                    x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
                 if tgt_layer is not None:
                     layer_results.append((x, z))
+            if i >= self.num_layers:
+                x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
             if i == tgt_layer:
                 r = x
                 break
