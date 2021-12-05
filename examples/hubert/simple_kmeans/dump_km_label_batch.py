@@ -12,6 +12,7 @@ import numpy as np
 import joblib
 import torch
 import tqdm
+import pdb
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -59,7 +60,7 @@ def get_feat_iterator(feat_dir, split, nshard, rank):
         offsets = [0] + np.cumsum(lengs[:-1]).tolist()
 
     def iterate():
-        feat = np.load(feat_path, mmap_mode="r")
+        feat = np.load(feat_path)
         assert feat.shape[0] == (offsets[-1] + lengs[-1])
         for offset, leng in zip(offsets, lengs):
             yield feat[offset: offset + leng]
@@ -76,7 +77,7 @@ def dump_label(feat_dir, split, km_path, nshard, rank, lab_dir, disable_tqdm):
     os.makedirs(lab_dir, exist_ok=True)
     with open(lab_path, "w") as f:
         for feat in tqdm.tqdm(iterator, total=num, disable=disable_tqdm):
-            # feat = torch.from_numpy(feat).cuda()
+            feat = torch.from_numpy(feat).cuda()
             lab = apply_kmeans(feat).tolist()
             f.write(" ".join(map(str, lab)) + "\n")
     logger.info("finished successfully")

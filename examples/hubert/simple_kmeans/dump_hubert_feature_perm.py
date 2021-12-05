@@ -22,6 +22,8 @@ import numpy as np
 import pdb
 Qmin, Qmax = 2, 5
 
+import warnings
+warnings.filterwarnings("error")
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -88,13 +90,13 @@ class HubertFeatureReader(object):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        spk = path.split('/')[1]
+        spk = path.split('/')[7]
         try:
             wav = self.random_formant_f0(wav, sr, spk)
         except UserWarning:
-            print(f"Praat warining - {fileName}")
+            print(f"Praat warining - {path}")
         except RuntimeError:
-            print(f"Praat Error - {fileName}")
+            print(f"Praat Error - {path}")
         wav = self.random_eq(wav, sr)
         if ref_len is not None and abs(ref_len - len(wav)) > 160:
             logging.warning(f"ref {ref_len} != read {len(wav)} ({path})")
@@ -121,10 +123,14 @@ class HubertFeatureReader(object):
         return torch.cat(feat, 1).squeeze(0)
 
 
-def main(tsv_dir, spk2info, split, ckpt_path, layer, nshard, rank, feat_dir, max_chunk):
+def main(tsv_dir, spk2info, split, ckpt_path, layer, nshard, rank, feat_dir, max_chunk, disable_tqdm):
     reader = HubertFeatureReader(ckpt_path, spk2info, split, layer, max_chunk)
     generator, num = get_path_iterator(f"{tsv_dir}/{split}.tsv", nshard, rank)
-    dump_feature(reader, generator, num, split, nshard, rank, feat_dir)
+    dump_feature(reader, generator, num, split, nshard, rank, feat_dir, disable_tqdm)
+    
+    
+def str2bool(v):
+    return v.lower() in ('true')
 
 
 if __name__ == "__main__":
@@ -140,6 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("rank", type=int)
     parser.add_argument("feat_dir")
     parser.add_argument("--max_chunk", type=int, default=1600000)
+    parser.add_argument("--disable_tqdm", type=str2bool, default=False)
     args = parser.parse_args()
     logger.info(args)
 
