@@ -16,7 +16,7 @@ from fairseq.dataclass import FairseqDataclass
 
 
 @dataclass
-class HubertCriterionConfig(FairseqDataclass):
+class HubertCriterionConfig_4(FairseqDataclass):
     pred_masked_weight: float = field(
         default=1.0,
         metadata={"help": "weight for predictive loss for masked frames"},
@@ -34,9 +34,31 @@ class HubertCriterionConfig(FairseqDataclass):
         metadata={"help": "output keys to log"},
     )
 
+def cross_entropy(q, p, reduction='sum'):
+    # p is the ground truth distribution and q is the input logit before softmox
+    _, n_classes = q.shape
+    if len(p.shape) == 1:
+        p = F.one_hot(p, num_classes=n_classes).to(q)
+    def entropy(p):
+        H_p = torch.zeros(p.shape).to(p)
+        H_p[p>0] = - (p[p>0] * p[p>0].log())
+        H_p = H_p.sum(dim=1)
+        return H_p
+    
+    KL_pq = F.kl_div(q.log_softmax(dim=1), p, reduction='none').sum(dim=1)
+    H_p = entropy(p)
+    ce = KL_pq + H_p
+    if reduction == 'none':
+        return ce
+    elif reduction == 'sum':
+        return ce.sum()
+    elif reduction == 'mean':
+        return ce.mean()
+    else:
+        raise ValueError('Reduction: {reduction} not implemented!')
 
-@register_criterion("hubert", dataclass=HubertCriterionConfig)
-class HubertCriterion(FairseqCriterion):
+@register_criterion("hubert_4", dataclass=HubertCriterionConfig_4)
+class HubertCriterion_4(FairseqCriterion):
     def __init__(self, task, pred_masked_weight, pred_nomask_weight, loss_weights=None, log_keys=None):
         super().__init__(task)
         self.pred_masked_weight = pred_masked_weight
@@ -62,24 +84,24 @@ class HubertCriterion(FairseqCriterion):
         targ_m_list = model.get_targets(net_output, True)
         assert self.pred_masked_weight == 0 or len(logp_m_list) > 0
         for i, (logp_m, targ_m) in enumerate(zip(logp_m_list, targ_m_list)):
-            loss_m = F.cross_entropy(logp_m, targ_m, reduction=reduction)
+            loss_m = cross_entropy(logp_m, targ_m, reduction=reduction)
             loss_m_list.append(loss_m)
             logging_output[f"loss_m_{i}"] = loss_m.detach().item()
         if self.pred_masked_weight > 0:
             loss += self.pred_masked_weight * sum(loss_m_list)
-            sample_size += targ_m_list[0].numel()
+            sample_size += targ_m_list[0].shape[0]
 
         loss_u_list = []
         logp_u_list = model.get_logits(net_output, False)
         targ_u_list = model.get_targets(net_output, False)
         assert self.pred_nomask_weight == 0 or len(logp_u_list) > 0
         for i, (logp_u, targ_u) in enumerate(zip(logp_u_list, targ_u_list)):
-            loss_u = F.cross_entropy(logp_u, targ_u, reduction=reduction)
+            loss_u = cross_entropy(logp_u, targ_u, reduction=reduction)
             loss_u_list.append(loss_u)
             logging_output[f"loss_u_{i}"] = loss_u.detach().item()
         if self.pred_nomask_weight > 0:
             loss += self.pred_nomask_weight * sum(loss_u_list)
-            sample_size += targ_u_list[0].numel()
+            sample_size += targ_u_list[0].shape[0]
 
         if self.loss_weights is not None:
             assert hasattr(model, "get_extra_losses")
