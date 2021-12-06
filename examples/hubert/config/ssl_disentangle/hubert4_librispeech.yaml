@@ -44,7 +44,7 @@ dataset:
   validate_interval_updates: 10000
 
 criterion:
-  _name: hubert
+  _name: hubert_4
   pred_masked_weight: 1.0
   pred_nomask_weight: 0.0
   loss_weights: [10,]
