@@ -20,6 +20,7 @@ from fairseq.data.fairseq_dataset import FairseqDataset
 from fairseq.data.audio.audio_utils_1 import params2sos
 from fairseq.data.audio.audio_utils_1 import change_gender
 from fairseq.pdb import set_trace
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -53,29 +54,26 @@ def load_audio(manifest_path, max_keep, min_keep):
 
 
 def load_label(label_path, inds, tot):
-    labels = joblib.load(label_path)
+    labels = []
+    lengths = []
+    with open(label_path, 'r') as f:
+        root_dir = f.readline().strip()
+        for l in f:
+            rel_path, length = l.strip().split('\t')
+            labels.append(f'{root_dir}/{rel_path}')
+            lengths.append(int(length))
     assert (
-        len(labels) == tot
+        len(labels) == tot and len(lengths) == tot
     ), f"number of labels does not match ({len(labels)} != {tot})"
     labels = [labels[i] for i in inds]
-    return labels
-
-def load_label_offset(label_path, inds, tot):
-    with open(label_path) as f:
-        code_lengths = [len(line.encode("utf-8")) for line in f]
-        assert (
-            len(code_lengths) == tot
-        ), f"number of labels does not match ({len(code_lengths)} != {tot})"
-        offsets = list(itertools.accumulate([0] + code_lengths))
-        offsets = [(offsets[i], offsets[i + 1]) for i in inds]
-    return offsets
-
+    lengths = [lengths[i] for i in inds]
+    return labels, lengths
 
 def verify_label_lengths(
     audio_sizes,
     audio_rate,
     label_path,
-    labels,
+    lengths,
     label_rate,
     inds,
     tot,
@@ -84,8 +82,6 @@ def verify_label_lengths(
     if label_rate < 0:
         logger.info(f"{label_path} is sequence label. skipped")
         return
-
-    lengths = [l.shape[0] for l in labels]
 
     num_invalid = 0
     for i, ind in enumerate(inds):
@@ -107,7 +103,6 @@ def verify_label_lengths(
         logger.warning(
             f"total {num_invalid} (audio, label) pairs with mismatched lengths"
         )
-        
 
 
 import parselmouth
@@ -171,7 +166,12 @@ class HubertDataset_4(FairseqDataset):
         assert self.store_labels
 
         self.n_speical_tokens = n_speical_tokens
-        self.label_list = [load_label(p, inds, tot) for p in label_paths]
+
+        self.label_list, self.length_list = [], []
+        for p in label_paths:
+            labels, lengths = load_label(p, inds, tot)
+            self.label_list.append(labels)
+            self.length_list.append(lengths)
 
         self.num_classes = [len(lp.dictionary) for lp in label_processors]
         self.eyes = [np.eye(nc) for nc in self.num_classes] # used for generating numpy onehot vectors
@@ -180,9 +180,9 @@ class HubertDataset_4(FairseqDataset):
             label_processors is None
             or len(label_processors) == self.num_labels
         )
-        for label_path, label_rate, labels in zip(label_paths, self.label_rates, self.label_list):
+        for label_path, label_rate, labels, lengths in zip(label_paths, self.label_rates, self.label_list, self.length_list):
             verify_label_lengths(
-                self.sizes, sample_rate, label_path, labels, label_rate, inds, tot
+                self.sizes, sample_rate, label_path, lengths, label_rate, inds, tot
             )
 
         self.max_sample_size = (
@@ -204,7 +204,6 @@ class HubertDataset_4(FairseqDataset):
         return wav
     
     def random_formant_f0(self, wav, sr, spk):
-        #s = parselmouth.Sound(wav, sampling_frequency=sr)
         _, (lo, hi, _) = self.spk2info[spk]
         
         ratio_fs = self.rng.uniform(1, 1.4)
@@ -253,6 +252,7 @@ class HubertDataset_4(FairseqDataset):
 
     def get_label(self, index, label_idx):
         label = self.label_list[label_idx][index]
+        label = np.load(label)
         special_tokens = np.zeros((label.shape[0], self.n_speical_tokens)).astype(np.float32)
         label = np.concatenate([special_tokens, label], axis=1)
         label = torch.from_numpy(label).float()
