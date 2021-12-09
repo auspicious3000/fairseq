@@ -16,7 +16,7 @@ from fairseq.data.data_utils import compute_mask_indices
 from fairseq.data.dictionary import Dictionary
 from fairseq.dataclass import ChoiceEnum, FairseqDataclass
 from fairseq.models import BaseFairseqModel, register_model
-from fairseq.models.wav2vec.wav2vec2 import (
+from fairseq.models.wav2vec.wav2vec2_1 import (
     ConvFeatureExtractionModel
 )
 from fairseq.models.wav2vec.wav2vec2_1 import TransformerEncoder_1
@@ -30,7 +30,7 @@ from fairseq.pdb import set_trace
 
 logger = logging.getLogger(__name__)
 
-EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "layer_norm"])
+EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "group_norm_masked", "layer_norm"])
 MASKING_DISTRIBUTION_CHOICES = ChoiceEnum(
     ["static", "uniform", "normal", "poisson"]
 )
@@ -373,14 +373,15 @@ class HubertModel_4(BaseFairseqModel):
         logits = logits.transpose(0, 1)  # (num_x, num_cls)
         return logits
 
-    def forward_features(self, source: torch.Tensor) -> torch.Tensor:
+    def forward_features(self, source: torch.Tensor, 
+                         padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.feature_grad_mult > 0:
-            features = self.feature_extractor(source)
+            features = self.feature_extractor(source, padding_mask)
             if self.feature_grad_mult != 1.0:
                 features = GradMultiply.apply(features, self.feature_grad_mult)
         else:
             with torch.no_grad():
-                features = self.feature_extractor(source)
+                features = self.feature_extractor(source, padding_mask)
         return features
 
     def forward_targets(
@@ -396,16 +397,27 @@ class HubertModel_4(BaseFairseqModel):
         target_list = [t[:, target_inds.long()] for t in target_list]
         return features, target_list
 
+    #def forward_padding_mask(
+    #    self, features: torch.Tensor, padding_mask: torch.Tensor,
+    #) -> torch.Tensor:
+    #    extra = padding_mask.size(1) % features.size(1)
+    #    if extra > 0:
+    #        padding_mask = padding_mask[:, :-extra]
+    #    padding_mask = padding_mask.view(
+    #        padding_mask.size(0), features.size(1), -1
+    #    )
+    #    padding_mask = padding_mask.all(-1)
+    #    return padding_mask
+    
     def forward_padding_mask(
         self, features: torch.Tensor, padding_mask: torch.Tensor,
     ) -> torch.Tensor:
-        extra = padding_mask.size(1) % features.size(1)
-        if extra > 0:
-            padding_mask = padding_mask[:, :-extra]
-        padding_mask = padding_mask.view(
-            padding_mask.size(0), features.size(1), -1
-        )
-        padding_mask = padding_mask.all(-1)
+        from fairseq.data.data_utils import lengths_to_padding_mask
+        
+        lengths_org = (1-padding_mask).sum(dim=1)
+        lengths = (lengths_org - 400).div(320, rounding_mode='floor') + 1
+        padding_mask = lengths_to_padding_mask(lengths)
+        
         return padding_mask
 
     def forward(
@@ -419,7 +431,8 @@ class HubertModel_4(BaseFairseqModel):
         output_layer: Optional[int] = None,
     ) -> Dict[str, torch.Tensor]:
         """output layer is 1-based"""
-        features = self.forward_features(source)
+        features = self.forward_features(source, padding_mask)
+        
         if target_list is not None:
             features, target_list = self.forward_targets(features, target_list)
         features_pen = features.float().pow(2).mean()
