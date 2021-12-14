@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import (
     LayerNorm,
+    Fp32GroupNorm,
     GroupNormMasked,
     CondLayerNorm,
     MultiheadAttention,
@@ -119,12 +120,15 @@ class ConvFeatureExtractionModel(nn.Module):
 
         for i, conv in enumerate(self.conv_layers):
             if i == 0:
-                if padding_mask is not None:
-                    _, k, stride = self.cl
-                    lengths_org = (1-padding_mask).sum(dim=1)
-                    lengths = torch.floor(((lengths_org - k) / stride) + 1).long()
-                    padding_mask = (~lengths_to_padding_mask(lengths)).long()
-                x = conv(x, padding_mask)
+                if self.mode == "group_norm_masked":
+                    if padding_mask is not None:
+                        _, k, stride = self.cl
+                        lengths_org = (1-padding_mask).sum(dim=1)
+                        lengths = torch.floor(((lengths_org - k) / stride) + 1).long()
+                        padding_mask = (~lengths_to_padding_mask(lengths)).long()
+                    x = conv(x, padding_mask)
+                else:
+                    x = conv(x)
             else:
                 x = conv(x)
 

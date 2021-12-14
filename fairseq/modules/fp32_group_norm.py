@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 import torch
+from fairseq.pdb import set_trace
 
 
 class GroupNormMasked(nn.Module):
@@ -43,15 +44,25 @@ class GroupNormMasked(nn.Module):
         else:
             mask = mask.view(B, 1, 1, L)
         x = x * mask
+        lengths = mask.sum(dim=3, keepdim=True)
         
-        mean = x.mean(dim=2, keepdim=True).sum(dim=3, keepdim=True) / mask.sum(dim=3, keepdim=True)
-        var = (((x - mean)**2)*mask).mean(dim=2, keepdim=True).sum(dim=3, keepdim=True) / mask.sum(dim=3, keepdim=True)
-        
-        x = (x - mean) / (var + self.eps).sqrt()
+        assert x.size(2)==1
+        mean_ = x.mean(dim=3, keepdim=True)
+        mean = mean_ * L / lengths
+        #var = (((x - mean)**2)*mask).sum(dim=3, keepdim=True) / lengths
+        #var = (x**2).sum(dim=3, keepdim=True) / lengths - mean**2
+        var = (x.var(dim=3, unbiased=False, keepdim=True) + mean_**2) * L / lengths - mean**2
+        var = var.add_(self.eps)
+
+        x = x.add_(-mean)
+        x = x.div_(var.sqrt())
         
         x = x.view(B, C, L)
         
-        return x * self.weight.view(1,-1,1) + self.bias.view(1,-1,1)
+        x = x.mul_(self.weight.view(1,-1,1))
+        x = x.add_(self.bias.view(1,-1,1))
+        
+        return x
     
     def extra_repr(self):
         return '{num_groups}, {num_channels}, eps={eps}, ' \

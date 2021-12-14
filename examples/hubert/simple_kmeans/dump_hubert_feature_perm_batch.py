@@ -53,7 +53,9 @@ class HubertFeatureReader(object):
             cfg,
             task,
         ) = fairseq.checkpoint_utils.load_model_ensemble_and_task([ckpt_path], 
-                                                                  {'extractor_mode': 'group_norm_masked'})
+                                                                  {'extractor_mode': 'group_norm_masked',
+                                                                   'encoder_layers_1': 0},
+                                                                  strict=False)
         self.model = model[0].eval().cuda()
         self.task = task
         self.layer = layer
@@ -68,6 +70,7 @@ class HubertFeatureReader(object):
         with torch.no_grad():
             feat_chunk, _ = self.model.extract_features(
                 source=uttrs,
+                spk_emb=0,
                 padding_mask=padding_mask,
                 mask=False,
                 output_layer=self.layer,

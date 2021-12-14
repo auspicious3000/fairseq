@@ -38,10 +38,10 @@ echo ""
 echo " Run started at:- "
 date
 
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch.sh 481 520 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch.sh 521 560 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch.sh 561 600 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch.sh 601 640 &
+srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch_1.sh 802 841 &
+srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch_1.sh 842 881 &
+srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch_1.sh 882 921 &
+srun --nodes=1 --ntasks-per-node=1 ./run_prepare_data_batch_1.sh 922 961 &
 wait
 
 echo "Run completed at:- "
