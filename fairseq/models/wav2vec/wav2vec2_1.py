@@ -37,6 +37,7 @@ class ConvFeatureExtractionModel(nn.Module):
         super().__init__()
 
         assert mode in {"default", "group_norm_masked", "layer_norm"}
+        self.mode = mode
 
         def block(
             n_in,
