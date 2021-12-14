@@ -54,8 +54,8 @@ class GroupNormMasked(nn.Module):
         var = (x.var(dim=3, unbiased=False, keepdim=True) + mean_**2) * L / lengths - mean**2
         var = var.add_(self.eps)
 
-        x = x.add_(-mean)
-        x = x.div_(var.sqrt())
+        x = x.add_(-mean.detach())
+        x = x.div_(var.sqrt().detach())
         
         x = x.view(B, C, L)
         
