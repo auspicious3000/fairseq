@@ -44,29 +44,29 @@ echo Feature extraction time was `expr $end - $start` seconds.
 #python learn_kmeans.py $feat_dir "train" ${nshard} "${km_dir}" 100 --percent -1
 
 
-mkdir -p -m 777 $lab_dir
-start=`date +%s`
-pids=()
-for rank in $(seq 0 $((nshard - 1))); do
-CUDA_VISIBLE_DEVICES=$(bc <<< "${rank}/${ntasks}") python dump_km_label_batch.py $feat_dir "valid" "${km_dir}" ${nshard} ${rank} $lab_dir --disable_tqdm True &
-pids+=($!)
-done
-i=0; for pid in "${pids[@]}"; do wait ${pid} || ((++i)); done
-end=`date +%s`
-[ ${i} -gt 0 ] && echo "$0: ${i} dump_label jobs failed." && false
-echo Label extraction time was `expr $end - $start` seconds.
+#mkdir -p -m 777 $lab_dir
+#start=`date +%s`
+#pids=()
+#for rank in $(seq 0 $((nshard - 1))); do
+#CUDA_VISIBLE_DEVICES=$(bc <<< "${rank}/${ntasks}") python dump_km_label_batch.py $feat_dir "valid" "${km_dir}" ${nshard} ${rank} $lab_dir --disable_tqdm True &
+#pids+=($!)
+#done
+#i=0; for pid in "${pids[@]}"; do wait ${pid} || ((++i)); done
+#end=`date +%s`
+#[ ${i} -gt 0 ] && echo "$0: ${i} dump_label jobs failed." && false
+#echo Label extraction time was `expr $end - $start` seconds.
 
 
-for rank in $(seq 0 $((nshard - 1))); do
-  cat $lab_dir/valid_${rank}_${nshard}.km
-done > $lab_dir/valid.km
+#for rank in $(seq 0 $((nshard - 1))); do
+#  cat $lab_dir/valid_${rank}_${nshard}.km
+#done > $lab_dir/valid.km
 
 
-for rank in $(seq 0 $((nshard - 1))); do
-  rm $lab_dir/valid_${rank}_${nshard}.km
-done
+#for rank in $(seq 0 $((nshard - 1))); do
+#  rm $lab_dir/valid_${rank}_${nshard}.km
+#done
 
 
-rm -rf $feat_dir
+#rm -rf $feat_dir
 
 #exit 1
