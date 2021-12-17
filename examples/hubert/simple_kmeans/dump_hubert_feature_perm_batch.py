@@ -37,6 +37,7 @@ from feature_utils import get_shard_range
 #    assert rank < nshard and rank >= 0, f"invaid rank/nshard {rank}/{nshard}"
 #    assert nshard == 4
 #    endpoints = [(0,54472),(54472,112661),(112661,175996),(175996,281241)]
+#    endpoints = [(0,549),(549,1489),(1489,2909),(2909,5567)]
 #    start, end = endpoints[rank]
 #    assert start < end, f"start={start}, end={end}"
 #    logger.info(
@@ -66,7 +67,7 @@ class HubertFeatureReader(object):
     def get_feats(self, uttrs, lengths):
         uttrs = uttrs.cuda()
         lengths = lengths.cuda()
-        padding_mask = (~sequence_mask(lengths)).long()
+        padding_mask = ~sequence_mask(lengths)
         with torch.no_grad():
             feat_chunk, _ = self.model.extract_features(
                 source=uttrs,
