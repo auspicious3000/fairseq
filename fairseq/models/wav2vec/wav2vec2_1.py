@@ -14,6 +14,8 @@ import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import (
     LayerNorm,
+    Fp32GroupNorm,
+    GroupNormMasked,
     CondLayerNorm,
     MultiheadAttention,
     SamePad,
@@ -21,6 +23,117 @@ from fairseq.modules import (
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 from fairseq.utils import index_put
 from fairseq.models.wav2vec.wav2vec2 import TransformerSentenceEncoderLayer
+
+
+from fairseq.data.data_utils import lengths_to_padding_mask
+class ConvFeatureExtractionModel(nn.Module):
+    def __init__(
+        self,
+        conv_layers: List[Tuple[int, int, int]],
+        dropout: float = 0.0,
+        mode: str = "default",
+        conv_bias: bool = False,
+    ):
+        super().__init__()
+
+        assert mode in {"default", "group_norm_masked", "layer_norm"}
+        self.mode = mode
+
+        def block(
+            n_in,
+            n_out,
+            k,
+            stride,
+            is_layer_norm=False,
+            is_group_norm=False,
+            conv_bias=False,
+        ):
+            def make_conv():
+                conv = nn.Conv1d(n_in, n_out, k, stride=stride, bias=conv_bias)
+                nn.init.kaiming_normal_(conv.weight)
+                return conv
+            
+            class SequentialMasked(nn.Sequential):
+                def forward(self, inputs, mask):
+                    inputs = self._modules['0'](inputs)
+                    inputs = self._modules['1'](inputs)
+                    inputs = self._modules['2'](inputs, mask)
+                    inputs = self._modules['3'](inputs)
+                    return inputs
+
+            assert (
+                is_layer_norm and is_group_norm
+            ) == False, "layer norm and group norm are exclusive"
+
+            if is_layer_norm:
+                return nn.Sequential(
+                    make_conv(),
+                    nn.Dropout(p=dropout),
+                    nn.Sequential(
+                        TransposeLast(),
+                        Fp32LayerNorm(dim, elementwise_affine=True),
+                        TransposeLast(),
+                    ),
+                    nn.GELU(),
+                )
+            elif is_group_norm:
+                if mode == "default":
+                    return nn.Sequential(
+                        make_conv(),
+                        nn.Dropout(p=dropout),
+                        Fp32GroupNorm(dim, dim, affine=True),
+                        nn.GELU(),
+                    )
+                elif mode == "group_norm_masked":
+                    return SequentialMasked(
+                        make_conv(),
+                        nn.Dropout(p=dropout),
+                        GroupNormMasked(dim, dim, affine=True),
+                        nn.GELU(),
+                )               
+            else:
+                return nn.Sequential(make_conv(), nn.Dropout(p=dropout), nn.GELU())
+
+        in_d = 1
+        self.conv_layers = nn.ModuleList()
+        for i, cl in enumerate(conv_layers):
+            assert len(cl) == 3, "invalid conv definition: " + str(cl)
+            (dim, k, stride) = cl
+            if i == 0:
+                self.cl = cl
+            self.conv_layers.append(
+                block(
+                    in_d,
+                    dim,
+                    k,
+                    stride,
+                    is_layer_norm=mode == "layer_norm",
+                    is_group_norm=(mode == "default" or mode == "group_norm_masked") and i == 0,
+                    conv_bias=conv_bias,
+                )
+            )
+            in_d = dim
+
+    def forward(self, x, padding_mask):
+
+        # BxT -> BxCxT
+        x = x.unsqueeze(1)
+
+        for i, conv in enumerate(self.conv_layers):
+            if i == 0:
+                if self.mode == "group_norm_masked":
+                    if padding_mask is not None:
+                        _, k, stride = self.cl
+                        lengths_org = (~padding_mask).long().sum(dim=1)
+                        lengths = torch.floor(((lengths_org - k) / stride) + 1).long()
+                        padding_mask = (~lengths_to_padding_mask(lengths)).long()
+                    x = conv(x, padding_mask)
+                else:
+                    x = conv(x)
+            else:
+                x = conv(x)
+
+        return x
 
 
 class TransformerEncoder_1(nn.Module):
@@ -115,10 +228,10 @@ class TransformerEncoder_1(nn.Module):
             if not self.training or (dropout_probability > self.layerdrop):
                 if i < self.num_layers:
                     x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
-                else:
-                    x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
                 if tgt_layer is not None:
                     layer_results.append((x, z))
+            if i >= self.num_layers:
+                x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
             if i == tgt_layer:
                 r = x
                 break
