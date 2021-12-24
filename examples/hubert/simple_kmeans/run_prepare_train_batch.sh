@@ -24,7 +24,7 @@ for device in $(seq 0 5); do
 hd=$(bc <<< "${head}+${device}*${part}")
 tl=$(bc <<< "${head}+(${device}+1)*${part}-1")
 echo Using GPU $device fer $hd to $tl
-CUDA_VISIBLE_DEVICES=${device} ./prepare_valid_perm_batch.sh $hd $tl &
+CUDA_VISIBLE_DEVICES=${device} ./prepare_train_perm_batch.sh $hd $tl &
 pids+=($!)
 done
 i=0; for pid in "${pids[@]}"; do wait ${pid} || ((++i)); done

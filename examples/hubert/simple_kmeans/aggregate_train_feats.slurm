@@ -5,7 +5,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --wait-all-nodes=1
 #SBATCH --gres=gpu:6
-#SBATCH --nodes=4
+#SBATCH --nodes=16
 #SBATCH --cpus-per-task=80
 #SBATCH --exclusive
 
@@ -34,10 +34,9 @@ echo ""
 echo " Run started at:- "
 date
 
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_valid_batch.sh 1 252 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_valid_batch.sh 253 504 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_valid_batch.sh 505 756 &
-srun --nodes=1 --ntasks-per-node=1 ./run_prepare_valid_batch.sh 757 1008 &
+for node in $(seq 0 15); do
+srun --nodes=1 --ntasks-per-node=1 python cumsum_mmap.py $node &
+done
 wait
 
 echo "Run completed at:- "

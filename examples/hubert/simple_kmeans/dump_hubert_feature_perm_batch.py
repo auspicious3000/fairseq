@@ -71,7 +71,6 @@ class HubertFeatureReader(object):
         with torch.no_grad():
             feat_chunk, _ = self.model.extract_features(
                 source=uttrs,
-                spk_emb=0,
                 padding_mask=padding_mask,
                 mask=False,
                 output_layer=self.layer,
@@ -138,7 +137,7 @@ class Utterances(data.Dataset):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        spk = path.split('/')[7]
+        spk = path.split('/')[9]
         try:
             wav = self.random_formant_f0(wav, sr, spk)
         except UserWarning:
