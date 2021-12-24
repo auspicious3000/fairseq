@@ -16,8 +16,10 @@ from fairseq.data.data_utils import compute_mask_indices
 from fairseq.data.dictionary import Dictionary
 from fairseq.dataclass import ChoiceEnum, FairseqDataclass
 from fairseq.models import BaseFairseqModel, register_model
-from fairseq.models.wav2vec.wav2vec2 import (
+from fairseq.models.wav2vec.wav2vec2_1 import (
     ConvFeatureExtractionModel,
+)
+from fairseq.models.wav2vec.wav2vec2 import (
     TransformerEncoder,
 )
 from fairseq.modules import GradMultiply, LayerNorm
@@ -29,7 +31,7 @@ from omegaconf import II
 
 logger = logging.getLogger(__name__)
 
-EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "layer_norm"])
+EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "group_norm_masked", "layer_norm"])
 MASKING_DISTRIBUTION_CHOICES = ChoiceEnum(
     ["static", "uniform", "normal", "poisson"]
 )
@@ -374,18 +376,19 @@ class HubertModel(BaseFairseqModel):
         logits = logits.transpose(0, 1)  # (num_x, num_cls+1)
         return logits
 
-    def forward_features(self, source: torch.Tensor) -> torch.Tensor:
+    def forward_features(self, source: torch.Tensor, 
+                         padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.feature_grad_mult > 0:
-            features = self.feature_extractor(source)
+            features = self.feature_extractor(source, padding_mask)
             if self.feature_grad_mult != 1.0:
                 features = GradMultiply.apply(features, self.feature_grad_mult)
         else:
             with torch.no_grad():
-                features = self.feature_extractor(source)
+                features = self.feature_extractor(source, padding_mask)
         return features
 
     def forward_targets(
-        self, features: torch.Tensor, target_list: List[torch.Tensor],
+        self, features: torch.Tensor, target_list: List[torch.Tensor], padding_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Trim features to ensure labels exist and then get aligned labels
         feat_tsz = features.size(2)
@@ -393,20 +396,19 @@ class HubertModel(BaseFairseqModel):
         if self.feat2tar_ratio * feat_tsz > targ_tsz:
             feat_tsz = int(targ_tsz / self.feat2tar_ratio)
             features = features[..., :feat_tsz]
+            padding_mask = padding_mask[:, :feat_tsz]
         target_inds = torch.arange(feat_tsz).float() * self.feat2tar_ratio
         target_list = [t[:, target_inds.long()] for t in target_list]
-        return features, target_list
+        return features, target_list, padding_mask
 
     def forward_padding_mask(
         self, features: torch.Tensor, padding_mask: torch.Tensor,
     ) -> torch.Tensor:
-        extra = padding_mask.size(1) % features.size(1)
-        if extra > 0:
-            padding_mask = padding_mask[:, :-extra]
-        padding_mask = padding_mask.view(
-            padding_mask.size(0), features.size(1), -1
-        )
-        padding_mask = padding_mask.all(-1)
+        from fairseq.data.data_utils import lengths_to_padding_mask
+        
+        lengths_org = (~padding_mask).long().sum(dim=1)
+        lengths = (lengths_org - 400).div(320, rounding_mode='floor') + 1
+        padding_mask = lengths_to_padding_mask(lengths)
         return padding_mask
 
     def forward(
@@ -419,18 +421,19 @@ class HubertModel(BaseFairseqModel):
         output_layer: Optional[int] = None,
     ) -> Dict[str, torch.Tensor]:
         """output layer is 1-based"""
-        features = self.forward_features(source)
+        features = self.forward_features(source, padding_mask)
+        
+        if padding_mask is not None:
+            padding_mask = self.forward_padding_mask(features, padding_mask)
+        
         if target_list is not None:
-            features, target_list = self.forward_targets(features, target_list)
+            features, target_list, padding_mask = self.forward_targets(features, target_list, padding_mask)
 
         features_pen = features.float().pow(2).mean()
 
         features = features.transpose(1, 2)
         features = self.layer_norm(features)
         unmasked_features = features.clone()
-
-        if padding_mask is not None:
-            padding_mask = self.forward_padding_mask(features, padding_mask)
 
         if self.post_extract_proj is not None:
             features = self.post_extract_proj(features)
