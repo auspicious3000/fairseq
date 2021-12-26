@@ -14,6 +14,7 @@ from fairseq.criterions import FairseqCriterion, register_criterion
 from fairseq.dataclass import FairseqDataclass
 from fairseq.logging.meters import safe_round
 from fairseq.utils import is_xla_tensor
+from fairseq.pdb import set_trace
 
 
 @dataclass
@@ -60,6 +61,8 @@ class Wav2vecCriterion(FairseqCriterion):
             weights = model.get_target_weights(target, net_output)
             if torch.is_tensor(weights):
                 weights = weights.float()
+        
+        set_trace()
 
         losses = []
 

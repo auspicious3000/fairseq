@@ -18,6 +18,7 @@ from fairseq.data import data_utils
 from fairseq.data.fairseq_dataset import FairseqDataset
 from fairseq.data.audio.audio_utils_1 import params2sos
 from fairseq.data.audio.audio_utils_1 import change_gender
+from fairseq.data.audio.audio_utils_1 import change_gender_f0
 from fairseq.pdb import set_trace
 
 logger = logging.getLogger(__name__)
@@ -114,12 +115,12 @@ def verify_label_lengths(
 
 import parselmouth
 import warnings
-#warnings.filterwarnings("error")
+warnings.filterwarnings("error")
 from scipy.signal import sosfilt
 Qmin, Qmax = 2, 5
 
 
-class HubertDataset_1(FairseqDataset):
+class HubertDataset_2(FairseqDataset):
     def __init__(
         self,
         manifest_path: str,
@@ -223,6 +224,19 @@ class HubertDataset_1(FairseqDataset):
         ss = change_gender(wav, sr, lo, hi, ratio_fs, ratio_ps, ratio_pr)
         
         return ss
+    
+    def fixed_formant_f0(self, wav, sr, spk):
+        #s = parselmouth.Sound(wav, sampling_frequency=sr)
+        _, (lo, hi, _) = self.spk2info[spk]
+        
+        if lo==50:
+            ratio_fs, f0_med, ratio_pr = 1.2, 300, 1.2
+        else:
+            ratio_fs, f0_med, ratio_pr = 0.8, 100, 0.8
+            
+        ss = change_gender_f0(wav, sr, lo, hi, ratio_fs, f0_med, ratio_pr)
+        
+        return ss    
 
     def get_audio(self, index):
         import soundfile as sf
@@ -235,18 +249,43 @@ class HubertDataset_1(FairseqDataset):
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
         if self.split == 'train':
+            # 1st version
             try:
-                wav = self.random_formant_f0(wav, cur_sample_rate, spk)
+                wav_1 = self.random_formant_f0(wav, cur_sample_rate, spk)
             except UserWarning:
                 print(f"Praat warining - {fileName}")
             except RuntimeError:
                 print(f"Praat Error - {fileName}")
-            wav = self.random_eq(wav, cur_sample_rate)
-        wav = torch.from_numpy(wav).float()
-        wav = self.postprocess(wav, cur_sample_rate)
+            wav_1 = self.random_eq(wav_1, cur_sample_rate)
+            wav_1 = torch.from_numpy(wav_1).float()
+            wav_1 = self.postprocess(wav_1, cur_sample_rate)
+            # 2nd version
+            try:
+                wav_2 = self.random_formant_f0(wav, cur_sample_rate, spk)
+            except UserWarning:
+                print(f"Praat warining - {fileName}")
+            except RuntimeError:
+                print(f"Praat Error - {fileName}")
+            wav_2 = self.random_eq(wav_2, cur_sample_rate)
+            wav_2 = torch.from_numpy(wav_2).float()
+            wav_2 = self.postprocess(wav_2, cur_sample_rate)
+        elif self.split == 'valid':
+            wav_1 = torch.from_numpy(wav).float()
+            wav_1 = self.postprocess(wav_1, cur_sample_rate)
+            try:
+                wav_2 = self.fixed_formant_f0(wav, cur_sample_rate, spk)
+            except UserWarning:
+                print(f"Praat warining - {fileName}")
+            except RuntimeError:
+                print(f"Praat Error - {fileName}")
+            wav_2 = torch.from_numpy(wav_2).float()
+            wav_2 = self.postprocess(wav_2, cur_sample_rate)
+        else:
+            raise ValueError('Invalid dataset mode!')
+        assert len(wav_1) == len(wav_2), "Different audio lengths!"
         spk_emb, _ = self.spk2info[spk]
         spk_emb = torch.from_numpy(spk_emb).float()
-        return wav, spk_emb
+        return wav_1, wav_2, spk_emb
 
     def get_label(self, index, label_idx):
         if self.store_labels:
@@ -265,15 +304,15 @@ class HubertDataset_1(FairseqDataset):
         return [self.get_label(index, i) for i in range(self.num_labels)]
 
     def __getitem__(self, index):
-        wav, spk_emb = self.get_audio(index)
+        wav_1, wav_2, spk_emb = self.get_audio(index)
         labels = self.get_labels(index)
-        return {"id": index, "source": wav, "label_list": labels, "spk_emb": spk_emb}
+        return {"id": index, "source_1": wav_1, "source_2": wav_2, "label_list": labels, "spk_emb": spk_emb}
 
     def __len__(self):
         return len(self.sizes)
 
-    def crop_to_max_size(self, wav, target_size):
-        size = len(wav)
+    def crop_to_max_size(self, wav_1, wav_2, target_size):
+        size = len(wav_1)
         diff = size - target_size
         if diff <= 0:
             return wav, 0
@@ -282,23 +321,24 @@ class HubertDataset_1(FairseqDataset):
         if self.random_crop:
             start = np.random.randint(0, diff + 1)
             end = size - diff + start
-        return wav[start:end], start
+        return wav_1[start:end], wav_2[start:end], start
 
     def collater(self, samples):
         # target = max(sizes) -> random_crop not used
         # target = max_sample_size -> random_crop used for long
-        samples = [s for s in samples if s["source"] is not None]
+        samples = [s for s in samples if s["source_1"] is not None]
         if len(samples) == 0:
             return {}
 
-        audios = [s["source"] for s in samples]
-        audio_sizes = [len(s) for s in audios]
+        audios_1 = [s["source_1"] for s in samples]
+        audios_2 = [s["source_2"] for s in samples]
+        audio_sizes = [len(s) for s in audios_1]
         if self.pad_audio:
             audio_size = min(max(audio_sizes), self.max_sample_size)
         else:
             audio_size = min(min(audio_sizes), self.max_sample_size)
-        collated_audios, padding_mask, audio_starts = self.collater_audio(
-            audios, audio_size
+        collated_audios_1, collated_audios_2, padding_mask, audio_starts = self.collater_audio(
+            audios_1, audios_2, audio_size
         )
         
         spk_embs = [s["spk_emb"] for s in samples]
@@ -312,7 +352,7 @@ class HubertDataset_1(FairseqDataset):
             targets_by_label, audio_size, audio_starts
         )
 
-        net_input = {"source": collated_audios, "padding_mask": padding_mask, "spk_emb": collated_embs}
+        net_input = {"source_1": collated_audios_1, "source_2": collated_audios_2, "padding_mask_1": padding_mask, "spk_emb": collated_embs}
         batch = {
             "id": torch.LongTensor([s["id"] for s in samples]),
             "net_input": net_input,
@@ -332,28 +372,33 @@ class HubertDataset_1(FairseqDataset):
         collated_speakers = torch.stack(spk_embs)
         return collated_speakers
 
-    def collater_audio(self, audios, audio_size):
-        collated_audios = audios[0].new_zeros(len(audios), audio_size)
+    def collater_audio(self, audios_1, audios_2, audio_size):
+        collated_audios_1 = audios_1[0].new_zeros(len(audios_1), audio_size)
+        collated_audios_2 = audios_2[0].new_zeros(len(audios_2), audio_size)
         padding_mask = (
-            torch.BoolTensor(collated_audios.shape).fill_(False)
+            torch.BoolTensor(collated_audios_1.shape).fill_(False)
             # if self.pad_audio else None
         )
-        audio_starts = [0 for _ in audios]
-        for i, audio in enumerate(audios):
-            diff = len(audio) - audio_size
+        audio_starts = [0 for _ in audios_1]
+        for i, (audio_1, audio_2) in enumerate(zip(audios_1, audios_2)):
+            diff = len(audio_1) - audio_size
             if diff == 0:
-                collated_audios[i] = audio
+                collated_audios_1[i] = audio_1
+                collated_audios_2[i] = audio_2
             elif diff < 0:
                 assert self.pad_audio
-                collated_audios[i] = torch.cat(
-                    [audio, audio.new_full((-diff,), 0.0)]
+                collated_audios_1[i] = torch.cat(
+                    [audio_1, audio_1.new_full((-diff,), 0.0)]
+                )
+                collated_audios_2[i] = torch.cat(
+                    [audio_2, audio_2.new_full((-diff,), 0.0)]
                 )
                 padding_mask[i, diff:] = True
             else:
-                collated_audios[i], audio_starts[i] = self.crop_to_max_size(
-                    audio, audio_size
+                collated_audios_1[i], collated_audios_2[i], audio_starts[i] = self.crop_to_max_size(
+                    audio_1, audio_2, audio_size
                 )
-        return collated_audios, padding_mask, audio_starts
+        return collated_audios_1, collated_audios_2, padding_mask, audio_starts
 
     def collater_frm_label(
         self, targets, audio_size, audio_starts, label_rate, pad

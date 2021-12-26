@@ -15,6 +15,7 @@ from .append_token_dataset import AppendTokenDataset
 from .audio.raw_audio_dataset import BinarizedAudioDataset, FileAudioDataset
 from .audio.hubert_dataset import HubertDataset
 from .audio.hubert_dataset_1 import HubertDataset_1
+from .audio.hubert_dataset_2 import HubertDataset_2
 from .backtranslation_dataset import BacktranslationDataset
 from .bucket_pad_length_dataset import BucketPadLengthDataset
 from .colorize_dataset import ColorizeDataset
@@ -88,6 +89,7 @@ __all__ = [
     "GroupedIterator",
     "HubertDataset",
     "HubertDataset_1",
+    "HubertDataset_2",
     "IdDataset",
     "IndexedCachedDataset",
     "IndexedDataset",

@@ -127,7 +127,7 @@ class ConvFeatureExtractionModel(nn.Module):
                         lengths_org = (~padding_mask).long().sum(dim=1)
                         lengths = torch.floor(((lengths_org - k) / stride) + 1).long()
                         padding_mask = (~lengths_to_padding_mask(lengths)).long()
-                    x = conv(x, padding_mask)
+                    x = conv(x, padding_mask)   #padding_mask is numeric
                 else:
                     x = conv(x)
             else:
@@ -196,15 +196,15 @@ class TransformerEncoder_1(nn.Module):
 
         self.apply(init_bert_params)
 
-    def forward(self, x, spk_emb, padding_mask=None, layer=None):
-        x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer)
+    def forward(self, x, spk_emb, padding_mask=None, layer=None, tap=False):
+        x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer, tap)
 
         if self.layer_norm_first and layer is None:
             x = self.cond_layer_norm(x, spk_emb)
 
         return x, layer_results
 
-    def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None):
+    def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None, tap=False):
 
         if padding_mask is not None:
             x = index_put(x, padding_mask, 0)
@@ -225,14 +225,14 @@ class TransformerEncoder_1(nn.Module):
         r = None
         for i, layer in enumerate(self.layers):
             dropout_probability = np.random.random()
-            if not self.training or (dropout_probability > self.layerdrop):
-                if i < self.num_layers:
-                    x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
-                if tgt_layer is not None:
-                    layer_results.append((x, z))
+            if (not self.training or (dropout_probability > self.layerdrop)) and (i < self.num_layers):
+                x, z = layer(x, self_attn_padding_mask=padding_mask, need_weights=False)
+                if tgt_layer is not None or tap:
+                    layer_results.append(x.transpose(0, 1))
             if i >= self.num_layers:
                 x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
             if i == tgt_layer:
+                assert i < self.num_layers, 'speaker conditioned layers not allowed'
                 r = x
                 break
 
