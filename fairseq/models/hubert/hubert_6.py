@@ -13,7 +13,9 @@ import torch.nn as nn
 from dataclasses import dataclass, field
 from fairseq import utils
 from fairseq.data.data_utils import compute_mask_indices
+from fairseq.data.data_utils import lengths_to_padding_mask
 from fairseq.data.dictionary import Dictionary
+from fairseq.utils import buffered_arange, index_put, is_xla_tensor
 from fairseq.dataclass import ChoiceEnum, FairseqDataclass
 from fairseq.models import BaseFairseqModel, register_model
 from fairseq.models.wav2vec.wav2vec2_1 import (
@@ -21,9 +23,9 @@ from fairseq.models.wav2vec.wav2vec2_1 import (
 )
 from fairseq.models.wav2vec.wav2vec2_1 import TransformerEncoder_1
 from fairseq.modules import GradMultiply, LayerNorm
-from fairseq.tasks.hubert_pretraining import (
-    HubertPretrainingConfig,
-    HubertPretrainingTask,
+from fairseq.tasks.hubert_6_pretraining import (
+    HubertPretrainingConfig_6,
+    HubertPretrainingTask_6,
 )
 from omegaconf import II
 from fairseq.pdb import set_trace
@@ -37,7 +39,7 @@ MASKING_DISTRIBUTION_CHOICES = ChoiceEnum(
 
 
 @dataclass
-class HubertConfig_1(FairseqDataclass):
+class HubertConfig_6(FairseqDataclass):
     label_rate: int = II("task.label_rate")
 
     extractor_mode: EXTRACTOR_MODE_CHOICES = field(
@@ -190,6 +192,15 @@ class HubertConfig_1(FairseqDataclass):
             "help": "min space between spans (if no overlap is enabled)"
         },
     )
+        
+    # negative selection
+    num_negatives: int = field(
+        default=100,
+        metadata={"help": "number of negative examples from the same sample"},
+    )
+    cross_sample_negatives: int = field(
+        default=0, metadata={"help": "number of negative examples from the any sample"}
+    )
 
     # positional embeddings
     conv_pos: int = field(
@@ -221,12 +232,12 @@ class HubertConfig_1(FairseqDataclass):
     )
 
 
-@register_model("hubert_1", dataclass=HubertConfig_1)
-class HubertModel_1(BaseFairseqModel):
+@register_model("hubert_6", dataclass=HubertConfig_6)
+class HubertModel_6(BaseFairseqModel):
     def __init__(
         self,
-        cfg: HubertConfig_1,
-        task_cfg: HubertPretrainingConfig,
+        cfg: HubertConfig_6,
+        task_cfg: HubertPretrainingConfig_6,
         dictionaries: List[Dictionary],
     ) -> None:
         super().__init__()
@@ -273,6 +284,9 @@ class HubertModel_1(BaseFairseqModel):
         self.logit_temp = cfg.logit_temp
         self.skip_masked = cfg.skip_masked
         self.skip_nomask = cfg.skip_nomask
+        
+        self.n_negatives = cfg.num_negatives
+        self.cross_sample_negatives = cfg.cross_sample_negatives
 
         final_dim = (
             cfg.final_dim if cfg.final_dim > 0 else cfg.encoder_embed_dim
@@ -310,6 +324,8 @@ class HubertModel_1(BaseFairseqModel):
                 torch.FloatTensor(sum(self.num_classes), final_dim)
             )
             nn.init.uniform_(self.label_embs_concat)
+            
+        self.layer_proj = nn.Linear(cfg.encoder_embed_dim, final_dim)
 
     def upgrade_state_dict_named(self, state_dict, name):
         """Upgrade a (possibly old) state dict for new versions of fairseq."""
@@ -318,14 +334,13 @@ class HubertModel_1(BaseFairseqModel):
         return state_dict
 
     @classmethod
-    def build_model(cls, cfg: HubertConfig_1, task: HubertPretrainingTask):
+    def build_model(cls, cfg: HubertConfig_6, task: HubertPretrainingTask_6):
         """Build a new model instance."""
 
-        model = HubertModel_1(cfg, task.cfg, task.dictionaries)
+        model = HubertModel_6(cfg, task.cfg, task.dictionaries)
         return model
 
-    def apply_mask(self, x, padding_mask, target_list):
-        B, T, C = x.shape
+    def get_mask(self, B, T, padding_mask):
         if self.mask_prob > 0:
             mask_indices = compute_mask_indices(
                 (B, T),
@@ -338,31 +353,94 @@ class HubertModel_1(BaseFairseqModel):
                 no_overlap=self.no_mask_overlap,
                 min_space=self.mask_min_space,
             )
-            mask_indices = torch.from_numpy(mask_indices).to(x.device)
-            x[mask_indices] = self.mask_emb
+            #mask_indices = torch.from_numpy(mask_indices).to(x.device)
+            #x[mask_indices] = self.mask_emb
         else:
             mask_indices = None
 
-        if self.mask_channel_prob > 0:
-            mask_channel_indices = compute_mask_indices(
-                (B, C),
-                None,
-                self.mask_channel_prob,
-                self.mask_channel_length,
-                self.mask_channel_selection,
-                self.mask_channel_other,
-                no_overlap=self.no_mask_channel_overlap,
-                min_space=self.mask_channel_min_space,
-            )
-            mask_channel_indices = (
-                torch.from_numpy(mask_channel_indices)
-                .to(x.device)
-                .unsqueeze(1)
-                .expand(-1, T, -1)
-            )
-            x[mask_channel_indices] = 0
+        assert self.mask_channel_prob == 0
 
-        return x, mask_indices
+        return mask_indices
+    
+    def sample_negatives(self, y, num, padding_count=None):
+
+        if self.n_negatives == 0 and self.cross_sample_negatives == 0:
+            return y.new(0)
+
+        bsz, tsz, fsz = y.shape
+        y = y.view(-1, fsz)  # BTC => (BxT)C
+
+        # FIXME: what happens if padding_count is specified?
+        cross_high = tsz * bsz
+        high = tsz - (padding_count or 0)
+        with torch.no_grad():
+            assert high > 1, f"{bsz,tsz,fsz}"
+
+            if self.n_negatives > 0:
+                tszs = (
+                    buffered_arange(num)
+                    .unsqueeze(-1)
+                    .expand(-1, self.n_negatives)
+                    .flatten()
+                )
+
+                neg_idxs = torch.randint(
+                    low=0, high=high - 1, size=(bsz, self.n_negatives * num)
+                )
+                neg_idxs[neg_idxs >= tszs] += 1
+
+            if self.cross_sample_negatives > 0:
+                tszs = (
+                    buffered_arange(num)
+                    .unsqueeze(-1)
+                    .expand(-1, self.cross_sample_negatives)
+                    .flatten()
+                )
+
+                cross_neg_idxs = torch.randint(
+                    low=0,
+                    high=cross_high - 1,
+                    size=(bsz, self.cross_sample_negatives * num),
+                )
+                cross_neg_idxs[cross_neg_idxs >= tszs] += 1
+
+        if self.n_negatives > 0:
+            neg_idxs = neg_idxs + (torch.arange(bsz).unsqueeze(1) * high)
+        else:
+            neg_idxs = cross_neg_idxs
+
+        if self.cross_sample_negatives > 0 and self.n_negatives > 0:
+            neg_idxs = torch.cat([neg_idxs, cross_neg_idxs], dim=1)
+
+        negs = y[neg_idxs.view(-1)]
+        negs = negs.view(
+            bsz, num, self.n_negatives + self.cross_sample_negatives, fsz
+        ).permute(
+            2, 0, 1, 3
+        )  # to NxBxTxC
+        return negs, neg_idxs
+    
+    def compute_sim(self, x, y, negatives):
+
+        neg_is_pos = (y == negatives).all(-1)
+        y = y.unsqueeze(0)
+        targets = torch.cat([y, negatives], dim=0)
+
+        logits = torch.cosine_similarity(x.float(), targets.float(), dim=-1).type_as(x)
+
+        logits = logits / self.logit_temp
+
+        if is_xla_tensor(logits) or neg_is_pos.any():
+            fillval = -float(2 ** 30)
+            if not hasattr(self, "_inftensor"):
+                self._inftensor = (
+                    torch.tensor(fillval).to(x.device)
+                    if is_xla_tensor(logits)
+                    else float("-inf")
+                )
+            logits[1:] = index_put(logits[1:], neg_is_pos, self._inftensor)
+
+        return logits
 
     def compute_nce(self, x, pos, negs):
         neg_is_pos = (pos == negs).all(-1)
@@ -406,27 +484,31 @@ class HubertModel_1(BaseFairseqModel):
     def forward_padding_mask(
         self, features: torch.Tensor, padding_mask: torch.Tensor,
     ) -> torch.Tensor:
-        from fairseq.data.data_utils import lengths_to_padding_mask
-        
+        # replaces original forward_padding_mask for batch inference
         lengths_org = (~padding_mask).long().sum(dim=1)
         lengths = (lengths_org - 400).div(320, rounding_mode='floor') + 1
-                                                      
-         
         padding_mask = lengths_to_padding_mask(lengths)
-        
         return padding_mask
 
     def forward(
         self,
-        source: torch.Tensor,
+        source_1: torch.Tensor,
+        source_2: torch.Tensor,
         spk_emb: torch.Tensor,
         target_list: Optional[List[torch.Tensor]] = None,
-        padding_mask: Optional[torch.Tensor] = None,
+        padding_mask_1: Optional[torch.Tensor] = None,
         mask: bool = True,
         features_only: bool = False,
         output_layer: Optional[int] = None,
+        tap: bool = True
     ) -> Dict[str, torch.Tensor]:
         """output layer is 1-based"""
+        
+        source = torch.cat((source_1, source_2), dim=0)
+        padding_mask_2 = padding_mask_1.clone()
+        padding_mask = torch.cat((padding_mask_1, padding_mask_2), dim=0)
+        spk_emb = spk_emb.repeat(2, 1)
+        
         features = self.forward_features(source, padding_mask)
         
         if padding_mask is not None:
@@ -434,22 +516,29 @@ class HubertModel_1(BaseFairseqModel):
         
         if target_list is not None:
             features, target_list, padding_mask = self.forward_targets(features, target_list, padding_mask)
+            for j,t in enumerate(target_list):
+                target_list[j] = t.repeat(2,1)
+                
         features_pen = features.float().pow(2).mean()
         
         features = features.transpose(1, 2)
         features = self.layer_norm(features)
-        unmasked_features = features.clone()
+        #unmasked_features = features.clone()
 
         if self.post_extract_proj is not None:
             features = self.post_extract_proj(features)
 
         features = self.dropout_input(features)
-        unmasked_features = self.dropout_features(unmasked_features)
+        #unmasked_features = self.dropout_features(unmasked_features)
 
         if mask:
-            x, mask_indices = self.apply_mask(
-                features, padding_mask, target_list
-            )
+            B, T, _ = features.shape
+            mask_indices = self.get_mask(B//2, T, padding_mask_1)
+            mask_indices = torch.from_numpy(mask_indices).to(features.device)
+            mask_indices = mask_indices.repeat(2, 1)
+            features[mask_indices] = self.mask_emb
+            x = features
+            unmasked_indices = torch.logical_and(~padding_mask, ~mask_indices)
         else:
             x = features
             mask_indices = None
@@ -459,16 +548,31 @@ class HubertModel_1(BaseFairseqModel):
         # x: (B, T, D), float
         # padding_mask: (B, T), bool
         # mask_indices: (B, T), bool
-        x, _ = self.encoder(
+        x, layer_results = self.encoder(
             x,
             spk_emb,
             padding_mask=padding_mask,
-            layer=None if output_layer is None else output_layer - 1
+            layer=None if output_layer is None else output_layer - 1,
+            tap=tap
         )
 
         if features_only:
             return {"x": x, "padding_mask": padding_mask, "features": features}
-
+        
+        # prepare contrastive loss
+        y = layer_results[-1]   # LAYER DROP??
+        y = y[unmasked_indices].view(y.size(0), -1, y.size(-1))
+        y_1, y_2 = torch.split(y, B//2, dim=0)
+        y_1 = self.layer_proj(y_1)
+        y_2 = self.layer_proj(y_2)
+        
+        negs_1, _ = self.sample_negatives(y_1, y_1.size(1))
+        negs_2, _ = self.sample_negatives(y_2, y_2.size(1))
+        
+        z_1 = self.compute_sim(y_1, y_2, negs_1)
+        z_2 = self.compute_sim(y_2, y_1, negs_2)
+        z = torch.cat((z_1, z_2), dim=1)
+        
         def compute_pred(proj_x, target, label_embs):
             # compute logits for the i-th label set
             y = torch.index_select(label_embs, 0, target.long())
@@ -482,9 +586,9 @@ class HubertModel_1(BaseFairseqModel):
             return self.compute_nce(proj_x, y, negs)
 
         label_embs_list = self.label_embs_concat.split(self.num_classes, 0)
-
+        
         if not self.skip_masked:
-            masked_indices = torch.logical_and(~padding_mask, mask_indices)
+            masked_indices = torch.logical_and(~padding_mask, mask_indices) 
             proj_x_m = self.final_proj(x[masked_indices])
             if self.untie_final_proj:
                 proj_x_m_list = proj_x_m.chunk(len(target_list), dim=-1)
@@ -521,6 +625,7 @@ class HubertModel_1(BaseFairseqModel):
             "logit_u_list": logit_u_list,
             "padding_mask": padding_mask,
             "features_pen": features_pen,
+            "z": z
         }
         return result
 
@@ -572,3 +677,13 @@ class HubertModel_1(BaseFairseqModel):
     def remove_pretraining_modules(self):
         self.target_glu = None
         self.final_proj = None
+        
+    def get_logits_ctr(self, net_output):
+        logits = net_output["z"]
+        logits = logits.transpose(0, 2)
+        logits = logits.reshape(-1, logits.size(-1))
+        return logits
+
+    def get_targets_ctr(self, net_output):
+        z = net_output["z"]
+        return z.new_zeros(z.size(1) * z.size(2), dtype=torch.long)
