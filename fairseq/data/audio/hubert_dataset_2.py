@@ -255,8 +255,10 @@ class HubertDataset_2(FairseqDataset):
             try:
                 wav_1 = self.random_formant_f0(wav, cur_sample_rate, spk)
             except UserWarning:
+                wav_1 = np.copy(wav)
                 print(f"Praat warining - {fileName}")
             except RuntimeError:
+                wav_1 = np.copy(wav)
                 print(f"Praat Error - {fileName}")
             wav_1 = self.random_eq(wav_1, cur_sample_rate)
             wav_1 = torch.from_numpy(wav_1).float()
@@ -265,8 +267,10 @@ class HubertDataset_2(FairseqDataset):
             try:
                 wav_2 = self.random_formant_f0(wav, cur_sample_rate, spk)
             except UserWarning:
+                wav_2 = np.copy(wav)
                 print(f"Praat warining - {fileName}")
             except RuntimeError:
+                wav_2 = np.copy(wav)
                 print(f"Praat Error - {fileName}")
             wav_2 = self.random_eq(wav_2, cur_sample_rate)
             wav_2 = torch.from_numpy(wav_2).float()
