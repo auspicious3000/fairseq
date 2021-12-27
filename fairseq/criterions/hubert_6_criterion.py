@@ -106,11 +106,10 @@ class HubertCriterion_6(FairseqCriterion):
         target_ctr = model.get_targets_ctr(net_output)
         loss_ctr = F.cross_entropy(logits_ctr, target_ctr, reduction=reduction)
         sample_size_ctr = target_ctr.numel()
-        p = self.loss_weights[-1] * loss_ctr * sample_size / sample_size_ctr
+        p = self.loss_weights[-1] * loss_ctr #* sample_size / sample_size_ctr
         loss += p
         logging_output[f"loss_ctr"] = loss_ctr.detach().item()
-        set_trace()
-
+        
         logging_output = {
             "loss": loss.item() if reduce else loss,
             "ntokens": sample_size,
