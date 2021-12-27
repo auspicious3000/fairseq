@@ -126,6 +126,9 @@ class HubertConfig_6(FairseqDataclass):
     logit_temp: float = field(
         default=0.1, metadata={"help": "temperature to divide logits by"}
     )
+    logit_temp_ctr: float = field(
+        default=0.1, metadata={"help": "temperature to divide logits_ctr by"}
+    )
     target_glu: bool = field(
         default=False, metadata={"help": "adds projection + glu to targets"}
     )
@@ -282,6 +285,7 @@ class HubertModel_6(BaseFairseqModel):
 
         self.feature_grad_mult = cfg.feature_grad_mult
         self.logit_temp = cfg.logit_temp
+        self.logit_temp_ctr = cfg.logit_temp_ctr
         self.skip_masked = cfg.skip_masked
         self.skip_nomask = cfg.skip_nomask
         
@@ -337,7 +341,7 @@ class HubertModel_6(BaseFairseqModel):
     def build_model(cls, cfg: HubertConfig_6, task: HubertPretrainingTask_6):
         """Build a new model instance."""
 
-        model = HubertModel_6(cfg, task.cfg, task.dictionaries)
+        model = HubertModel_6(cfg, task.cfg, task.dictionaries)        
         return model
 
     def get_mask(self, B, T, padding_mask):
@@ -428,7 +432,7 @@ class HubertModel_6(BaseFairseqModel):
 
         logits = torch.cosine_similarity(x.float(), targets.float(), dim=-1).type_as(x)
 
-        logits = logits / self.logit_temp
+        logits = logits / self.logit_temp_ctr
 
         if is_xla_tensor(logits) or neg_is_pos.any():
             fillval = -float(2 ** 30)
@@ -538,7 +542,8 @@ class HubertModel_6(BaseFairseqModel):
             mask_indices = mask_indices.repeat(2, 1)
             features[mask_indices] = self.mask_emb
             x = features
-            unmasked_indices = torch.logical_and(~padding_mask, ~mask_indices)
+            #unmasked_indices = torch.logical_and(~padding_mask, ~mask_indices)
+            unmasked_indices = ~mask_indices
         else:
             x = features
             mask_indices = None
@@ -555,7 +560,7 @@ class HubertModel_6(BaseFairseqModel):
             layer=None if output_layer is None else output_layer - 1,
             tap=tap
         )
-
+        
         if features_only:
             return {"x": x, "padding_mask": padding_mask, "features": features}
         
@@ -568,7 +573,6 @@ class HubertModel_6(BaseFairseqModel):
         
         negs_1, _ = self.sample_negatives(y_1, y_1.size(1))
         negs_2, _ = self.sample_negatives(y_2, y_2.size(1))
-        
         z_1 = self.compute_sim(y_1, y_2, negs_1)
         z_2 = self.compute_sim(y_2, y_1, negs_2)
         z = torch.cat((z_1, z_2), dim=1)

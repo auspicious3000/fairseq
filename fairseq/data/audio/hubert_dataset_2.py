@@ -205,6 +205,11 @@ class HubertDataset_2(FairseqDataset):
         #s = parselmouth.Sound(wav, sampling_frequency=sr)
         _, (lo, hi, _) = self.spk2info[spk]
         
+        if lo==50:
+            lo=75
+        if spk=="1447":
+            lo, hi = 60, 400
+        
         ratio_fs = self.rng.uniform(1, 1.4)
         coin = (self.rng.random() > 0.5)
         ratio_fs = coin*ratio_fs + (1-coin)*(1/ratio_fs)
@@ -217,10 +222,6 @@ class HubertDataset_2(FairseqDataset):
         coin = (self.rng.random() > 0.5)
         ratio_pr = coin*ratio_pr + (1-coin)*(1/ratio_pr)
         
-        if lo==50:
-            lo=75
-        if spk=="1447":
-            lo, hi = 60, 400
         ss = change_gender(wav, sr, lo, hi, ratio_fs, ratio_ps, ratio_pr)
         
         return ss
@@ -230,6 +231,7 @@ class HubertDataset_2(FairseqDataset):
         _, (lo, hi, _) = self.spk2info[spk]
         
         if lo==50:
+            lo=75
             ratio_fs, f0_med, ratio_pr = 1.2, 300, 1.2
         else:
             ratio_fs, f0_med, ratio_pr = 0.8, 100, 0.8
@@ -275,8 +277,10 @@ class HubertDataset_2(FairseqDataset):
             try:
                 wav_2 = self.fixed_formant_f0(wav, cur_sample_rate, spk)
             except UserWarning:
+                wav_2 = np.copy(wav)
                 print(f"Praat warining - {fileName}")
             except RuntimeError:
+                wav_2 = np.copy(wav)
                 print(f"Praat Error - {fileName}")
             wav_2 = torch.from_numpy(wav_2).float()
             wav_2 = self.postprocess(wav_2, cur_sample_rate)

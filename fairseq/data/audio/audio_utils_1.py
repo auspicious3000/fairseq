@@ -186,6 +186,6 @@ def change_gender(x, fs, lo, hi, ratio_fs, ratio_ps, ratio_pr):
 
 def change_gender_f0(x, fs, lo, hi, ratio_fs, new_f0_med, ratio_pr):
     s = parselmouth.Sound(x, sampling_frequency=fs)
-    ss = parselmouth.praat.call(s, "Change gender", ratio_fs, new_f0_med, ratio_pr, 1.0)
+    ss = parselmouth.praat.call(s, "Change gender", lo, hi, ratio_fs, new_f0_med, ratio_pr, 1.0)
     return ss.values.squeeze(0)
 
