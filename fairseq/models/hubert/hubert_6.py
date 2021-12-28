@@ -341,7 +341,15 @@ class HubertModel_6(BaseFairseqModel):
     def build_model(cls, cfg: HubertConfig_6, task: HubertPretrainingTask_6):
         """Build a new model instance."""
 
-        model = HubertModel_6(cfg, task.cfg, task.dictionaries)        
+        model = HubertModel_6(cfg, task.cfg, task.dictionaries) 
+        
+        #import fairseq
+        #models, _cfg, _task = fairseq.checkpoint_utils.load_model_ensemble_and_task(['/mnt/autovc_mrf/hubert_base_ls960.pt'])
+        #model_1 = models[0]
+        #hubert_state_dict = {k: v for k, v in model_1.state_dict().items() if 'label_embs_concat' != k}
+        #missing_keys, unexpected_keys = model.load_state_dict(hubert_state_dict, strict=False)
+        #print('missing_keys', missing_keys, 'unexpected_keys', unexpected_keys)
+        
         return model
 
     def get_mask(self, B, T, padding_mask):
@@ -641,17 +649,31 @@ class HubertModel_6(BaseFairseqModel):
         mask: bool = False,
         ret_conv: bool = False,
         output_layer: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        res = self.forward(
-            source,
+        tap: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:      
+        
+        features = self.forward_features(source, padding_mask)
+        
+        if padding_mask is not None:
+            logger.info("Batch generation mode!")
+            padding_mask = self.forward_padding_mask(features, padding_mask)
+        
+        features = features.transpose(1, 2)
+        features = self.layer_norm(features)
+
+        if self.post_extract_proj is not None:
+            features = self.post_extract_proj(features)
+
+        x, layer_results = self.encoder(
+            features,
             spk_emb,
             padding_mask=padding_mask,
-            mask=mask,
-            features_only=True,
-            output_layer=output_layer,
+            layer=None if output_layer is None else output_layer - 1,
+            tap=tap
         )
-        feature = res["features"] if ret_conv else res["x"]
-        return feature, res["padding_mask"]
+        res = features if ret_conv else x
+        
+        return res, padding_mask
 
     def get_logits(self, net_output, is_masked=True):
         if is_masked:
