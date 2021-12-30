@@ -16,9 +16,9 @@ import torch.nn.functional as F
 from feature_utils import get_path_iterator, dump_feature
 import numpy as np
 
-#import pickle
-#with open("/mnt/autovc_mrf/spk2emb_arctic.dict", "rb") as f:
-#    spk2info = pickle.load(f)
+import pickle
+with open("/mnt/ssl-disentangle/spk2info.dict", "rb") as f:
+    spk2info = pickle.load(f)
 
 
 logging.basicConfig(
@@ -50,8 +50,8 @@ class HubertFeatureReader(object):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        #spk_emb, _, _, _ = spk2info[path.split('/')[4]]
-        spk_emb = np.zeros((256,), dtype=np.float32)
+        spk_emb, _ = spk2info['valid'][path.split('/')[5]]
+        #spk_emb = np.zeros((256,), dtype=np.float32)
         if ref_len is not None and abs(ref_len - len(wav)) > 160:
             logging.warning(f"ref {ref_len} != read {len(wav)} ({path})")
         return wav, spk_emb
@@ -71,7 +71,7 @@ class HubertFeatureReader(object):
                 x_chunk = x[:, start: start + self.max_chunk]
                 feat_chunk, _ = self.model.extract_features(
                     source=x_chunk,
-                    spk_emb=0,
+                    spk_emb=emb,
                     padding_mask=None,
                     mask=False,
                     output_layer=self.layer,

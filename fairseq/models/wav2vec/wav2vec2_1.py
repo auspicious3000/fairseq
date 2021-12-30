@@ -231,7 +231,7 @@ class TransformerEncoder_1(nn.Module):
                     layer_results.append(x.transpose(0, 1))
             if i >= self.num_layers:
                 x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
-            if i == tgt_layer:
+            if self.training and i == tgt_layer:
                 assert i < self.num_layers, 'speaker conditioned layers not allowed'
                 r = x
                 break
