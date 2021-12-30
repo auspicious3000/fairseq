@@ -68,6 +68,9 @@ class HubertConfig_6(FairseqDataclass):
     activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
         default="gelu", metadata={"help": "activation function to use"}
     )
+    ctr_layers: int = field(
+        default=-1, metadata={"help": "contrastive layers in the transformer"}
+    )
 
     # dropouts
     dropout: float = field(
@@ -286,6 +289,7 @@ class HubertModel_6(BaseFairseqModel):
         self.feature_grad_mult = cfg.feature_grad_mult
         self.logit_temp = cfg.logit_temp
         self.logit_temp_ctr = cfg.logit_temp_ctr
+        self.ctr_layers = cfg.ctr_layers
         self.skip_masked = cfg.skip_masked
         self.skip_nomask = cfg.skip_nomask
         
@@ -573,7 +577,7 @@ class HubertModel_6(BaseFairseqModel):
             return {"x": x, "padding_mask": padding_mask, "features": features}
         
         # prepare contrastive loss
-        y = layer_results[-1]   # LAYER DROP??
+        y = layer_results[self.ctr_layers]   # LAYER DROP??
         y = y[unmasked_indices].view(y.size(0), -1, y.size(-1))
         y_1, y_2 = torch.split(y, B//2, dim=0)
         y_1 = self.layer_proj(y_1)
