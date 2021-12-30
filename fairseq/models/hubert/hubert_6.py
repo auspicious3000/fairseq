@@ -345,14 +345,7 @@ class HubertModel_6(BaseFairseqModel):
     def build_model(cls, cfg: HubertConfig_6, task: HubertPretrainingTask_6):
         """Build a new model instance."""
 
-        model = HubertModel_6(cfg, task.cfg, task.dictionaries) 
-        
-        #import fairseq
-        #models, _cfg, _task = fairseq.checkpoint_utils.load_model_ensemble_and_task(['/mnt/autovc_mrf/hubert_base_ls960.pt'])
-        #model_1 = models[0]
-        #hubert_state_dict = {k: v for k, v in model_1.state_dict().items() if 'label_embs_concat' != k}
-        #missing_keys, unexpected_keys = model.load_state_dict(hubert_state_dict, strict=False)
-        #print('missing_keys', missing_keys, 'unexpected_keys', unexpected_keys)
+        model = HubertModel_6(cfg, task.cfg, task.dictionaries)
         
         return model
 
