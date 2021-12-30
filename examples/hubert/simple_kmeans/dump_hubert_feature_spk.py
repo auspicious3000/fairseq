@@ -52,7 +52,7 @@ class HubertFeatureReader(object):
         assert wav.ndim == 1, wav.ndim
         #spk_emb, _, _, _ = spk2info[path.split('/')[4]]
         spk_emb = np.zeros((256,), dtype=np.float32)
-        if ref_len is not None and abs(ref_len - len(wav)) > 160:
+        if ref_len is not None and abs(ref_len - len(wav)) > 16:
             logging.warning(f"ref {ref_len} != read {len(wav)} ({path})")
         return wav, spk_emb
 
