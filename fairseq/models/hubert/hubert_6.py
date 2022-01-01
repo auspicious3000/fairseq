@@ -295,6 +295,7 @@ class HubertModel_6(BaseFairseqModel):
         
         self.n_negatives = cfg.num_negatives
         self.cross_sample_negatives = cfg.cross_sample_negatives
+        self.num_updates = 0
 
         final_dim = (
             cfg.final_dim if cfg.final_dim > 0 else cfg.encoder_embed_dim
@@ -498,6 +499,11 @@ class HubertModel_6(BaseFairseqModel):
         lengths = (lengths_org - 400).div(320, rounding_mode='floor') + 1
         padding_mask = lengths_to_padding_mask(lengths)
         return padding_mask
+    
+    def set_num_updates(self, num_updates):
+        """Set the number of parameters updates."""
+        super().set_num_updates(num_updates)
+        self.num_updates = num_updates
 
     def forward(
         self,

@@ -102,13 +102,19 @@ class HubertCriterion_6(FairseqCriterion):
                     logging_output[f"loss_{n}"] = p.item()
         
         # add contrastive loss
+        num_updates = model.num_updates
         logits_ctr = model.get_logits_ctr(net_output).float()
         target_ctr = model.get_targets_ctr(net_output)
         loss_ctr = F.cross_entropy(logits_ctr, target_ctr, reduction=reduction)
         sample_size_ctr = target_ctr.numel()
-        p = self.loss_weights[-1] * loss_ctr #* sample_size / sample_size_ctr
+        weight_ctr = self.loss_weights[-1] * num_updates
+        p = weight_ctr * loss_ctr 
         loss += p
-        logging_output[f"loss_ctr"] = loss_ctr.detach().item()
+        logging_output["ctr_loss"] = loss_ctr.detach().item()
+        logging_output["ctr_sample_size"] = sample_size_ctr 
+        #logging_output["ctr_num_updates"] = num_updates
+        #logging_output["ctr_weight"] = weight_ctr
+        logging_output["ctr_weighted_loss"] = p.detach().item()
         
         logging_output = {
             "loss": loss.item() if reduce else loss,
@@ -150,9 +156,11 @@ class HubertCriterion_6(FairseqCriterion):
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training (copied from normal cross entropy)."""
+        
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        sample_size_ctr = sum(log.get("ctr_sample_size", 0) for log in logging_outputs)
 
         metrics.log_scalar("loss", loss_sum / sample_size / math.log(2), sample_size, round=3)
         if sample_size != ntokens:
@@ -175,6 +183,13 @@ class HubertCriterion_6(FairseqCriterion):
             elif lk.startswith("correct_"):
                 val = sum(log[lk] for log in logging_outputs)
                 metrics.log_scalar(lk, val / counts[re.sub("correct", "count", lk)])
+            elif lk == "ctr_loss" or lk == "ctr_weighted_loss": 
+                val = sum(log[lk] for log in logging_outputs)
+                metrics.log_scalar(lk, val / sample_size_ctr / math.log(2), round=3)
+            #elif lk == "ctr_num_updates" or lk == "ctr_weight":
+            #    val = sum(log[lk] for log in logging_outputs) 
+            #    metrics.log_scalar(lk, val / len(logging_outputs), round=3)
+                
 
     @staticmethod
     def aggregate_logging_outputs(logging_outputs):
