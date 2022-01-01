@@ -205,6 +205,8 @@ class TransformerEncoder_1(nn.Module):
         return x, layer_results
 
     def extract_features(self, x, spk_emb, padding_mask=None, tgt_layer=None, tap=False):
+        if not self.training and tgt_layer is not None:
+            assert tgt_layer >= 0 and tgt_layer < len(self.layers)
 
         if padding_mask is not None:
             x = index_put(x, padding_mask, 0)
@@ -231,8 +233,7 @@ class TransformerEncoder_1(nn.Module):
                     layer_results.append(x.transpose(0, 1))
             if i >= self.num_layers:
                 x, z = layer(x, spk_emb, self_attn_padding_mask=padding_mask, need_weights=False)
-            if self.training and i == tgt_layer:
-                assert i < self.num_layers, 'speaker conditioned layers not allowed'
+            if i == tgt_layer:
                 r = x
                 break
 
