@@ -32,6 +32,7 @@ task:
   min_sample_size: 32000
   pad_audio: false
   random_crop: true
+  crop: false
   normalize: false # must be consistent with extractor
   spk2info: ???
 
