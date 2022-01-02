@@ -100,6 +100,10 @@ class HubertPretrainingConfig_6(FairseqDataclass):
         default=True,
         metadata={"help": "always crop from the beginning if false"},
     )
+    crop: Optional[bool] = field(
+        default=False,
+        metadata={"help": "crop using reference lengths in metadata"},
+    )
     pad_audio: Optional[bool] = field(
         default=False,
         metadata={"help": "pad audio to the longest one in the batch if true"},
@@ -190,6 +194,7 @@ class HubertPretrainingTask_6(FairseqTask):
             normalize=self.cfg.normalize,
             store_labels=False,
             random_crop=self.cfg.random_crop,
+            crop=self.cfg.crop,
             single_target=self.cfg.single_target,
             spk2info=self.cfg.spk2info
         )

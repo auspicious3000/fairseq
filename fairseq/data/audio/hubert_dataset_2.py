@@ -138,6 +138,7 @@ class HubertDataset_2(FairseqDataset):
         normalize: bool = False,
         store_labels: bool = True,
         random_crop: bool = False,
+        crop: bool = False,
         single_target: bool = False,
         spk2info = None
     ):
@@ -155,6 +156,7 @@ class HubertDataset_2(FairseqDataset):
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.random_crop = random_crop
+        self.crop = crop
 
         self.num_labels = len(label_paths)
         self.pad_list = pad_list
@@ -189,7 +191,7 @@ class HubertDataset_2(FairseqDataset):
         self.pad_audio = pad_audio
         self.normalize = normalize
         logger.info(
-            f"pad_audio={pad_audio}, random_crop={random_crop}, "
+            f"pad_audio={pad_audio}, random_crop={random_crop}, crop={crop}, "
             f"normalize={normalize}, max_sample_size={self.max_sample_size}"
         )
         
@@ -244,12 +246,15 @@ class HubertDataset_2(FairseqDataset):
         import soundfile as sf
     
         fileName = self.audio_names[index]
+        fileLen = self.sizes[index]
         spk = fileName.split('/')[1]
         wav_path = os.path.join(self.audio_root, fileName)
         wav, cur_sample_rate = sf.read(wav_path)
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
+        if self.crop:
+            wav = wav[:fileLen]
         if self.split == 'train':
             # 1st version
             try:
