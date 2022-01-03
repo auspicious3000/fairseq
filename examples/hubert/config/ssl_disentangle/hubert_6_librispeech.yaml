@@ -84,7 +84,7 @@ model:
   activation_dropout: 0.0
   encoder_layers_1: 1
   logit_temp_ctr: 1
-  ctr_layers: -1
+  ctr_layers: [-1]
 
 hydra:
   job:
