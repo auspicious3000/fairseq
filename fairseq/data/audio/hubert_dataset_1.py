@@ -114,7 +114,7 @@ def verify_label_lengths(
 
 import parselmouth
 import warnings
-#warnings.filterwarnings("error")
+warnings.filterwarnings("error")
 from scipy.signal import sosfilt
 Qmin, Qmax = 2, 5
 
@@ -137,6 +137,8 @@ class HubertDataset_1(FairseqDataset):
         normalize: bool = False,
         store_labels: bool = True,
         random_crop: bool = False,
+        random_perm: bool = False,
+        crop: bool = False,
         single_target: bool = False,
         spk2info = None
     ):
@@ -154,6 +156,8 @@ class HubertDataset_1(FairseqDataset):
         self.sample_rate = sample_rate
         self.shuffle = shuffle
         self.random_crop = random_crop
+        self.random_perm = random_perm
+        self.crop = crop
 
         self.num_labels = len(label_paths)
         self.pad_list = pad_list
@@ -188,7 +192,7 @@ class HubertDataset_1(FairseqDataset):
         self.pad_audio = pad_audio
         self.normalize = normalize
         logger.info(
-            f"pad_audio={pad_audio}, random_crop={random_crop}, "
+            f"pad_audio={pad_audio}, random_crop={random_crop}, random_perm={random_perm}, crop={crop}, "
             f"normalize={normalize}, max_sample_size={self.max_sample_size}"
         )
         
@@ -228,13 +232,16 @@ class HubertDataset_1(FairseqDataset):
         import soundfile as sf
     
         fileName = self.audio_names[index]
+        fileLen = self.sizes[index]
         spk = fileName.split('/')[1]
         wav_path = os.path.join(self.audio_root, fileName)
         wav, cur_sample_rate = sf.read(wav_path)
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        if self.split == 'train':
+        if self.crop:
+            wav = wav[:fileLen]
+        if self.split == 'train' and self.random_perm:
             try:
                 wav = self.random_formant_f0(wav, cur_sample_rate, spk)
             except UserWarning:

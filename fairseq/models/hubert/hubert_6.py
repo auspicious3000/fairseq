@@ -579,7 +579,7 @@ class HubertModel_6(BaseFairseqModel):
         # prepare contrastive loss
         score_list = []
         for ctr_layer in self.ctr_layers:
-            y = layer_results[ctr_layer]   # LAYER DROP??
+            y = layer_results[max(ctr_layer, -len(layer_results))]   # LAYER DROP??
             y = y[unmasked_indices].view(y.size(0), -1, y.size(-1))
             y_1, y_2 = torch.split(y, B//2, dim=0)
             y_1 = self.layer_proj(y_1)

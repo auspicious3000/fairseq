@@ -30,13 +30,14 @@ def get_km_model(
     max_no_improvement,
     n_init,
     reassignment_ratio,
+    verbose
 ):
     return MiniBatchKMeans(
         n_clusters=n_clusters,
         init=init,
         max_iter=max_iter,
         batch_size=batch_size,
-        verbose=1,
+        verbose=verbose,
         compute_labels=False,
         tol=tol,
         max_no_improvement=max_no_improvement,
@@ -99,6 +100,7 @@ def learn_kmeans(
     n_init,
     reassignment_ratio,
     max_no_improvement,
+    verbose
 ):
     np.random.seed(seed)
     feat = load_feature(feat_dir, split, nshard, seed, percent)
@@ -111,6 +113,7 @@ def learn_kmeans(
         max_no_improvement,
         n_init,
         reassignment_ratio,
+        verbose
     )
     km_model.fit(feat)
     joblib.dump(km_model, km_path)
@@ -140,6 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_no_improvement", default=100, type=int)
     parser.add_argument("--n_init", default=20, type=int)
     parser.add_argument("--reassignment_ratio", default=0.0, type=float)
+    parser.add_argument("--verbose", default=1, type=int)
     args = parser.parse_args()
     logging.info(str(args))
 

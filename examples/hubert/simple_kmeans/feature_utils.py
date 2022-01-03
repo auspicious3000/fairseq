@@ -45,7 +45,7 @@ def get_path_iterator(tsv, nshard, rank):
     return iterate, len(lines)
 
 
-def dump_feature(reader, generator, num, split, nshard, rank, feat_dir):
+def dump_feature(reader, generator, num, split, nshard, rank, feat_dir, disable_tqdm=False):
     iterator = generator()
 
     feat_path = f"{feat_dir}/{split}_{rank}_{nshard}.npy"
@@ -57,10 +57,11 @@ def dump_feature(reader, generator, num, split, nshard, rank, feat_dir):
 
     feat_f = NpyAppendArray(feat_path)
     with open(leng_path, "w") as leng_f:
-        for path, nsample in tqdm.tqdm(iterator, total=num):
+        for path, nsample in tqdm.tqdm(iterator, total=num, disable=disable_tqdm):
             feat = reader.get_feats(path, nsample)
             feat_f.append(feat.cpu().numpy())
             leng_f.write(f"{len(feat)}\n")
     logger.info("finished successfully")
+
 
 

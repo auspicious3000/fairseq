@@ -67,7 +67,7 @@ def get_feat_iterator(feat_dir, split, nshard, rank):
     return iterate, len(lengs)
 
 
-def dump_label(feat_dir, split, km_path, nshard, rank, lab_dir):
+def dump_label(feat_dir, split, km_path, nshard, rank, lab_dir, disable_tqdm):
     apply_kmeans = ApplyKmeans(km_path)
     generator, num = get_feat_iterator(feat_dir, split, nshard, rank)
     iterator = generator()
@@ -75,12 +75,16 @@ def dump_label(feat_dir, split, km_path, nshard, rank, lab_dir):
     lab_path = f"{lab_dir}/{split}_{rank}_{nshard}.km"
     os.makedirs(lab_dir, exist_ok=True)
     with open(lab_path, "w") as f:
-        for feat in tqdm.tqdm(iterator, total=num):
+        for feat in tqdm.tqdm(iterator, total=num, disable=disable_tqdm):
             # feat = torch.from_numpy(feat).cuda()
             lab = apply_kmeans(feat).tolist()
             f.write(" ".join(map(str, lab)) + "\n")
     logger.info("finished successfully")
 
+    
+def str2bool(v):
+    return v.lower() in ('true')
+    
 
 if __name__ == "__main__":
     import argparse
@@ -92,6 +96,7 @@ if __name__ == "__main__":
     parser.add_argument("nshard", type=int)
     parser.add_argument("rank", type=int)
     parser.add_argument("lab_dir")
+    parser.add_argument("--disable_tqdm", type=str2bool, default=False)
     args = parser.parse_args()
     logging.info(str(args))
 
