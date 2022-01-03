@@ -36,7 +36,7 @@ class HubertFeatureReader(object):
             model,
             cfg,
             task,
-        ) = fairseq.checkpoint_utils.load_model_ensemble_and_task([ckpt_path])
+        ) = fairseq.checkpoint_utils.load_model_ensemble_and_task([ckpt_path], {'ctr_layers':[-1]})
         self.model = model[0].eval().cuda()
         self.task = task
         self.layer = layer
@@ -80,10 +80,14 @@ class HubertFeatureReader(object):
         return torch.cat(feat, 1).squeeze(0)
 
 
-def main(tsv_dir, split, ckpt_path, layer, nshard, rank, feat_dir, max_chunk):
+def main(tsv_dir, split, ckpt_path, layer, nshard, rank, feat_dir, max_chunk, disable_tqdm):
     reader = HubertFeatureReader(ckpt_path, layer, max_chunk)
     generator, num = get_path_iterator(f"{tsv_dir}/{split}.tsv", nshard, rank)
-    dump_feature(reader, generator, num, split, nshard, rank, feat_dir)
+    dump_feature(reader, generator, num, split, nshard, rank, feat_dir, disable_tqdm)
+
+
+def str2bool(v):
+    return v.lower() in ('true')
 
 
 if __name__ == "__main__":
@@ -98,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("rank", type=int)
     parser.add_argument("feat_dir")
     parser.add_argument("--max_chunk", type=int, default=1600000)
+    parser.add_argument("--disable_tqdm", type=str2bool, default=False)
     args = parser.parse_args()
     logger.info(args)
 
