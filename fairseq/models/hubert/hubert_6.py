@@ -721,7 +721,9 @@ class HubertModel_6(BaseFairseqModel):
                 logits_B.append(logits)
             logits_B = torch.cat(logits_B, dim=0)
         else:
-            logits_B = logits_list[0]
+            logits = logits_list[0]
+            logits = logits.transpose(0, 2)
+            logits_B = logits.reshape(-1, logits.size(-1))
         return logits_B
 
     def get_targets_ctr(self, net_output):
