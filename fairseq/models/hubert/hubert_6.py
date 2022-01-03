@@ -68,8 +68,9 @@ class HubertConfig_6(FairseqDataclass):
     activation_fn: ChoiceEnum(utils.get_available_activation_fns()) = field(
         default="gelu", metadata={"help": "activation function to use"}
     )
-    ctr_layers: int = field(
-        default=-1, metadata={"help": "contrastive layers in the transformer"}
+    ctr_layers: List[int] = field(
+        default_factory=lambda: [],
+        metadata={"help": "contrastive layers in the transformer"},
     )
 
     # dropouts
@@ -576,17 +577,20 @@ class HubertModel_6(BaseFairseqModel):
             return {"x": x, "padding_mask": padding_mask, "features": features}
         
         # prepare contrastive loss
-        y = layer_results[self.ctr_layers]   # LAYER DROP??
-        y = y[unmasked_indices].view(y.size(0), -1, y.size(-1))
-        y_1, y_2 = torch.split(y, B//2, dim=0)
-        y_1 = self.layer_proj(y_1)
-        y_2 = self.layer_proj(y_2)
-        
-        negs_1, _ = self.sample_negatives(y_1, y_1.size(1))
-        negs_2, _ = self.sample_negatives(y_2, y_2.size(1))
-        z_1 = self.compute_sim(y_1, y_2, negs_1)
-        z_2 = self.compute_sim(y_2, y_1, negs_2)
-        z = torch.cat((z_1, z_2), dim=1)
+        score_list = []
+        for ctr_layer in self.ctr_layers:
+            y = layer_results[ctr_layer]   # LAYER DROP??
+            y = y[unmasked_indices].view(y.size(0), -1, y.size(-1))
+            y_1, y_2 = torch.split(y, B//2, dim=0)
+            y_1 = self.layer_proj(y_1)
+            y_2 = self.layer_proj(y_2)
+            
+            negs_1, _ = self.sample_negatives(y_1, y_1.size(1))
+            negs_2, _ = self.sample_negatives(y_2, y_2.size(1))
+            z_1 = self.compute_sim(y_1, y_2, negs_1)
+            z_2 = self.compute_sim(y_2, y_1, negs_2)
+            z = torch.cat((z_1, z_2), dim=1)
+            score_list.append(z)
         
         def compute_pred(proj_x, target, label_embs):
             # compute logits for the i-th label set
@@ -640,7 +644,7 @@ class HubertModel_6(BaseFairseqModel):
             "logit_u_list": logit_u_list,
             "padding_mask": padding_mask,
             "features_pen": features_pen,
-            "z": z
+            "score_list": score_list
         }
         return result
 
@@ -708,11 +712,21 @@ class HubertModel_6(BaseFairseqModel):
         self.final_proj = None
         
     def get_logits_ctr(self, net_output):
-        logits = net_output["z"]
-        logits = logits.transpose(0, 2)
-        logits = logits.reshape(-1, logits.size(-1))
-        return logits
+        logits_list = net_output["score_list"]
+        if len(logits_list) > 1:
+            logits_B = []
+            for logits in logits_list:
+                logits = logits.transpose(0, 2)
+                logits = logits.reshape(-1, logits.size(-1))
+                logits_B.append(logits)
+            logits_B = torch.cat(logits_B, dim=0)
+        else:
+            logits_B = logits_list[0]
+        return logits_B
 
     def get_targets_ctr(self, net_output):
-        z = net_output["z"]
-        return z.new_zeros(z.size(1) * z.size(2), dtype=torch.long)
+        logits_list = net_output["score_list"]
+        logits = logits_list[0]
+        return logits.new_zeros(
+            logits.size(1) * logits.size(2) * len(logits_list), 
+            dtype=torch.long)
