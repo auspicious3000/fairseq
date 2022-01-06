@@ -16,6 +16,7 @@ from .audio.raw_audio_dataset import BinarizedAudioDataset, FileAudioDataset
 from .audio.hubert_dataset import HubertDataset
 from .audio.hubert_dataset_1 import HubertDataset_1
 from .audio.hubert_dataset_2 import HubertDataset_2
+from .audio.hubert_dataset_3 import HubertDataset_3
 from .backtranslation_dataset import BacktranslationDataset
 from .bucket_pad_length_dataset import BucketPadLengthDataset
 from .colorize_dataset import ColorizeDataset
@@ -90,6 +91,7 @@ __all__ = [
     "HubertDataset",
     "HubertDataset_1",
     "HubertDataset_2",
+    "HubertDataset_3",
     "IdDataset",
     "IndexedCachedDataset",
     "IndexedDataset",
