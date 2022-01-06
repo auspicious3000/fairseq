@@ -36,7 +36,7 @@ def load_audio(manifest_path_1, manifest_path_2, max_keep, min_keep):
             assert len(items_1) == 2, line_1
             assert len(items_2) == 2, line_2
             assert items_1[0].split(".")[0] == items_2[0].split(".")[0]
-            sz_1, sz_2 = int(items_1[1]), int(items_1[1])
+            sz_1, sz_2 = int(items_1[1]), int(items_2[1])
             sz = min(sz_1, sz_2)
             if min_keep is not None and sz < min_keep:
                 n_short += 1
@@ -357,24 +357,25 @@ class HubertDataset_3(FairseqDataset):
     def get_audio_2(self, index): 
         # perm + conver
         fileName_1 = self.audio_names_1[index]
-        fileName_2 = self.audio_names_2[index]
         fileLen = self.sizes[index]
         spk = fileName_1.split('/')[1]
         wav_path_1 = os.path.join(self.audio_root_1, fileName_1)
-        wav_path_2 = os.path.join(self.audio_root_2, fileName_2)
         wav_1, cur_sample_rate_1 = sf.read(wav_path_1)
-        wav_2, cur_sample_rate_2 = sf.read(wav_path_2)
-        assert cur_sample_rate_1 == cur_sample_rate_2
         if wav_1.ndim == 2:
             wav_1 = wav_1.mean(-1)
         assert wav_1.ndim == 1, wav_1.ndim
-        if wav_2.ndim == 2:
-            wav_2 = wav_2.mean(-1)
-        assert wav_2.ndim == 1, wav_2.ndim
         if self.crop:
             wav_1 = wav_1[:fileLen]
-            wav_2 = wav_2[:fileLen]
         if self.split == 'train':
+            fileName_2 = self.audio_names_2[index]
+            wav_path_2 = os.path.join(self.audio_root_2, fileName_2)
+            wav_2, cur_sample_rate_2 = sf.read(wav_path_2)
+            assert cur_sample_rate_1 == cur_sample_rate_2
+            if wav_2.ndim == 2:
+                wav_2 = wav_2.mean(-1)
+            assert wav_2.ndim == 1, wav_2.ndim
+            if self.crop:
+                wav_2 = wav_2[:fileLen]
             # 1st version
             try:
                 wav_1 = self.random_formant_f0(wav_1, cur_sample_rate_1, spk)
@@ -393,9 +394,9 @@ class HubertDataset_3(FairseqDataset):
             wav_2 = self.postprocess(wav_2, cur_sample_rate_2)
         elif self.split == 'valid':
             wav_1 = torch.from_numpy(wav_1).float()
-            wav_1 = self.postprocess(wav_1, cur_sample_rate)
+            wav_1 = self.postprocess(wav_1, cur_sample_rate_1)
             try:
-                wav_2 = self.fixed_formant_f0(wav_1, cur_sample_rate, spk)
+                wav_2 = self.fixed_formant_f0(wav_1, cur_sample_rate_1, spk)
             except UserWarning:
                 wav_2 = np.copy(wav_1)
                 print(f"Praat warining - {fileName}")
@@ -403,7 +404,7 @@ class HubertDataset_3(FairseqDataset):
                 wav_2 = np.copy(wav_1)
                 print(f"Praat Error - {fileName}")
             wav_2 = torch.from_numpy(wav_2).float()
-            wav_2 = self.postprocess(wav_2, cur_sample_rate)
+            wav_2 = self.postprocess(wav_2, cur_sample_rate_1)
         else:
             raise ValueError('Invalid dataset mode!')
         assert len(wav_1) == len(wav_2), "Different audio lengths!"
@@ -414,24 +415,25 @@ class HubertDataset_3(FairseqDataset):
     def get_audio_3(self, index): 
         # raw + conver
         fileName_1 = self.audio_names_1[index]
-        fileName_2 = self.audio_names_2[index]
         fileLen = self.sizes[index]
         spk = fileName_1.split('/')[1]
         wav_path_1 = os.path.join(self.audio_root_1, fileName_1)
-        wav_path_2 = os.path.join(self.audio_root_2, fileName_2)
         wav_1, cur_sample_rate_1 = sf.read(wav_path_1)
-        wav_2, cur_sample_rate_2 = sf.read(wav_path_2)
-        assert cur_sample_rate_1 == cur_sample_rate_2
         if wav_1.ndim == 2:
             wav_1 = wav_1.mean(-1)
         assert wav_1.ndim == 1, wav_1.ndim
-        if wav_2.ndim == 2:
-            wav_2 = wav_2.mean(-1)
-        assert wav_2.ndim == 1, wav_2.ndim
         if self.crop:
             wav_1 = wav_1[:fileLen]
-            wav_2 = wav_2[:fileLen]
         if self.split == 'train':
+            fileName_2 = self.audio_names_2[index]
+            wav_path_2 = os.path.join(self.audio_root_2, fileName_2)
+            wav_2, cur_sample_rate_2 = sf.read(wav_path_2)
+            assert cur_sample_rate_1 == cur_sample_rate_2
+            if wav_2.ndim == 2:
+                wav_2 = wav_2.mean(-1)
+            assert wav_2.ndim == 1, wav_2.ndim
+            if self.crop:
+                wav_2 = wav_2[:fileLen]
             # 1st version
             wav_1 = torch.from_numpy(wav_1).float()
             wav_1 = self.postprocess(wav_1, cur_sample_rate_1)
@@ -441,9 +443,9 @@ class HubertDataset_3(FairseqDataset):
             wav_2 = self.postprocess(wav_2, cur_sample_rate_2)
         elif self.split == 'valid':
             wav_1 = torch.from_numpy(wav_1).float()
-            wav_1 = self.postprocess(wav_1, cur_sample_rate)
+            wav_1 = self.postprocess(wav_1, cur_sample_rate_1)
             try:
-                wav_2 = self.fixed_formant_f0(wav_1, cur_sample_rate, spk)
+                wav_2 = self.fixed_formant_f0(wav_1, cur_sample_rate_1, spk)
             except UserWarning:
                 wav_2 = np.copy(wav_1)
                 print(f"Praat warining - {fileName}")
@@ -451,7 +453,7 @@ class HubertDataset_3(FairseqDataset):
                 wav_2 = np.copy(wav_1)
                 print(f"Praat Error - {fileName}")
             wav_2 = torch.from_numpy(wav_2).float()
-            wav_2 = self.postprocess(wav_2, cur_sample_rate)
+            wav_2 = self.postprocess(wav_2, cur_sample_rate_1)
         else:
             raise ValueError('Invalid dataset mode!')
         assert len(wav_1) == len(wav_2), "Different audio lengths!"
