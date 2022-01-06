@@ -190,7 +190,8 @@ class TransformerEncoder_1(nn.Module):
         
         self.layer_norm_first = args.layer_norm_first
         self.layer_norm = LayerNorm(self.embedding_dim)
-        self.cond_layer_norm = CondLayerNorm(self.embedding_dim)
+        if args.encoder_layers_1 > 0:
+            self.cond_layer_norm = CondLayerNorm(self.embedding_dim)
         self.layerdrop = args.encoder_layerdrop
         self.num_layers = args.encoder_layers
 
@@ -200,7 +201,10 @@ class TransformerEncoder_1(nn.Module):
         x, layer_results = self.extract_features(x, spk_emb, padding_mask, layer, tap)
 
         if self.layer_norm_first and layer is None:
-            x = self.cond_layer_norm(x, spk_emb)
+            if args.encoder_layers_1 > 0:
+                x = self.cond_layer_norm(x, spk_emb)
+            else:
+                x = self.layer_norm(x)
 
         return x, layer_results
 
