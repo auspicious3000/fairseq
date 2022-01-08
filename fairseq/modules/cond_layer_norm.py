@@ -22,11 +22,9 @@ class CondLayerNorm(Module):
             self.bias_ln = Linear(self.dim_spk, 
                                   self.dim_last, 
                                   bias=False)
-            self.normalized_shape = (self.dim_spk, self.dim_last)
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
-            self.normalized_shape = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -35,11 +33,10 @@ class CondLayerNorm(Module):
             init.zeros_(self.bias_ln.weight)
 
     def forward(self, input, spk_emb):
-        spk_emb = spk_emb.unsqueeze(0).expand(input.size(0), -1, -1)
         weight = self.weight_ln(spk_emb)
         bias = self.bias_ln(spk_emb)
         return F.layer_norm(
-            input, input.size(), weight, bias, self.eps)
+            input, input.size()[1:], weight, bias, self.eps)
 
     def extra_repr(self):
         return '{dim_last}, eps={eps}, ' \
