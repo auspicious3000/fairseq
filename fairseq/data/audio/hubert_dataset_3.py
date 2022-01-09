@@ -435,10 +435,10 @@ class HubertDataset_3(FairseqDataset):
             if self.crop:
                 wav_2 = wav_2[:fileLen]
             # 1st version
+            wav_1 = self.random_eq(wav_1, cur_sample_rate_1)
             wav_1 = torch.from_numpy(wav_1).float()
             wav_1 = self.postprocess(wav_1, cur_sample_rate_1)
             # 2nd version
-            wav_2 = self.random_eq(wav_2, cur_sample_rate_2)
             wav_2 = torch.from_numpy(wav_2).float()
             wav_2 = self.postprocess(wav_2, cur_sample_rate_2)
         elif self.split == 'valid':
@@ -462,7 +462,8 @@ class HubertDataset_3(FairseqDataset):
         return wav_1, wav_2, spk_emb
     
     def get_audio(self, index):
-        case = self.rng.integers(0, 4)
+        #case = self.rng.integers(0, 4)
+        case = 3
         if case == 0:
             return self.get_audio_0(index)
         elif case == 1:
