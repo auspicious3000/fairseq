@@ -12,7 +12,7 @@ if __name__ == '__main__':
         for i, l in enumerate(fi):
             line = l.strip()
             trans = ''.join(line.split()).replace('|', ' ').upper().strip()
-            new_line = f'{trans} (None-{i+1})\n'
+            new_line = f'{trans} (None-{i})\n'
             fo.write(new_line)
             
         
