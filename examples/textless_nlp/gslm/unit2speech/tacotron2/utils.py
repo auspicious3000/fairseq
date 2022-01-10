@@ -22,8 +22,9 @@ def get_mask_from_lengths(lengths):
     return mask
 
 
-def load_wav_to_torch(full_path, sr=None):
-    data, sr = librosa.load(full_path, sr=sr)
+def load_wav_to_torch(full_path, sr=None, offset=0.0, duration=None):
+    
+    data, sr = librosa.load(full_path, sr=sr, offset=offset, duration=duration)
     data = np.clip(data, -1, 1)  # potentially out of [-1, 1] due to resampling
     data = data * 32768.0  # match values loaded by scipy
     return torch.FloatTensor(data.astype(np.float32)), sr

@@ -4,6 +4,7 @@ import torch.distributions as distr
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
+
 from .layers import ConvNorm, LinearNorm, GlobalAvgPool
 from .utils import to_gpu, get_mask_from_lengths
 
@@ -560,6 +561,7 @@ class Tacotron2(nn.Module):
             std = sqrt(2.0 / (hparams.obs_n_class + hparams.obs_dim))
             val = sqrt(3.0) * std  # uniform bounds for std
             self.obs_embedding.weight.data.uniform_(-val, val)
+        assert self.obs_embedding is None
 
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
