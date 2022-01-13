@@ -117,8 +117,12 @@ class HubertPretrainingConfig_8(FairseqDataclass):
         metadata={"help": "path to km_model"},
     )
     cdb_temp: float = field(
-        default=1,
+        default=1.0,
         metadata={"help": "0 < cdb_temp < 1"},
+    )
+    cdb_thrs: float = field(
+        default=-100,
+        metadata={"help": "cdb_thrs"},
     )
 
 
@@ -204,7 +208,8 @@ class HubertPretrainingTask_8(FairseqTask):
             single_target=self.cfg.single_target,
             spk2info=self.cfg.spk2info,
             km_model=self.cfg.km_model,
-            cdb_temp=self.cfg.cdb_temp
+            cdb_temp=self.cfg.cdb_temp,
+            cdb_thrs=self.cfg.cdb_thrs
         )
 
     def max_positions(self) -> Tuple[int, int]:

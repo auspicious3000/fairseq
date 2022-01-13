@@ -146,7 +146,8 @@ class HubertDataset_5(FairseqDataset):
         single_target: bool = False,
         spk2info = None,
         km_model = None,
-        cdb_temp = int
+        cdb_temp = float,
+        cdb_thrs = float
     ):
         self.split = manifest_path.split('/')[-1][:-4]
         assert self.split in ['train', 'valid']
@@ -157,8 +158,10 @@ class HubertDataset_5(FairseqDataset):
         self.Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
         km_model = joblib.load(km_model)
         C_np = km_model.cluster_centers_
+        C_np = C_np - C_np.mean(axis=0, keepdims=True)
         sim = sklearn.metrics.pairwise.cosine_similarity(C_np)
         sim_tc = torch.from_numpy(sim)
+        sim_tc[sim_tc < cdb_thrs] = float("-inf")
         cdb = torch.softmax(sim_tc/cdb_temp, dim=1)
         self.cdb = F.pad(cdb, (num_special_token,0,0,0))
         

@@ -36,7 +36,8 @@ task:
   normalize: false # must be consistent with extractor
   spk2info: ???
   km_model: ???
-  cdb_temp: 1
+  cdb_temp: 1.0
+  cdb_thrs: -100
 
 dataset:
   num_workers: 6
