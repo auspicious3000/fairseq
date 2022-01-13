@@ -146,5 +146,8 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", default=1, type=int)
     args = parser.parse_args()
     logging.info(str(args))
+    
+    km_dir = os.path.dirname(args.km_path)
+    os.makedirs(km_dir, exist_ok=True)
 
     learn_kmeans(**vars(args))
