@@ -21,7 +21,7 @@ from fairseq.models import BaseFairseqModel, register_model
 from fairseq.models.wav2vec.wav2vec2_1 import (
     ConvFeatureExtractionModel
 )
-from fairseq.models.wav2vec.wav2vec2_1 import TransformerEncoder_1
+from fairseq.models.wav2vec.wav2vec2_2 import TransformerEncoder_2
 from fairseq.modules import GradMultiply, LayerNorm
 from fairseq.tasks.hubert_6_pretraining import (
     HubertPretrainingConfig_6,
@@ -54,7 +54,7 @@ class HubertConfig_6(FairseqDataclass):
         default=12, metadata={"help": "num encoder layers in the transformer"}
     )
     encoder_layers_1: int = field(
-        default=3, metadata={"help": "num encoder layers in the transformer with spk_emb"}
+        default=3, metadata={"help": "num encoder_1 layers in the transformer"}
     )
     encoder_embed_dim: int = field(
         default=768, metadata={"help": "encoder embedding dimension"}
@@ -239,8 +239,8 @@ class HubertConfig_6(FairseqDataclass):
     )
 
 
-@register_model("hubert_6", dataclass=HubertConfig_6)
-class HubertModel_6(BaseFairseqModel):
+@register_model("hubert_7", dataclass=HubertConfig_6)
+class HubertModel_7(BaseFairseqModel):
     def __init__(
         self,
         cfg: HubertConfig_6,
@@ -306,7 +306,7 @@ class HubertModel_6(BaseFairseqModel):
             torch.FloatTensor(cfg.encoder_embed_dim).uniform_()
         )
 
-        self.encoder = TransformerEncoder_1(cfg)
+        self.encoder = TransformerEncoder_2(cfg)
         self.layer_norm = LayerNorm(self.embed)
 
         self.target_glu = None
@@ -347,7 +347,7 @@ class HubertModel_6(BaseFairseqModel):
     def build_model(cls, cfg: HubertConfig_6, task: HubertPretrainingTask_6):
         """Build a new model instance."""
 
-        model = HubertModel_6(cfg, task.cfg, task.dictionaries)
+        model = HubertModel_7(cfg, task.cfg, task.dictionaries)
         
         return model
 
@@ -523,7 +523,6 @@ class HubertModel_6(BaseFairseqModel):
         source = torch.cat((source_1, source_2), dim=0)
         padding_mask_2 = padding_mask_1.clone()
         padding_mask = torch.cat((padding_mask_1, padding_mask_2), dim=0)
-        spk_emb = spk_emb.repeat(2, 1)
         
         features = self.forward_features(source, padding_mask)
         
@@ -567,7 +566,6 @@ class HubertModel_6(BaseFairseqModel):
         # mask_indices: (B, T), bool
         x, layer_results = self.encoder(
             x,
-            spk_emb,
             padding_mask=padding_mask,
             layer=None if output_layer is None else output_layer - 1,
             tap=tap
@@ -651,7 +649,6 @@ class HubertModel_6(BaseFairseqModel):
     def extract_features(
         self,
         source: torch.Tensor,
-        spk_emb: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
         mask: bool = False,
         ret_conv: bool = False,
@@ -673,7 +670,6 @@ class HubertModel_6(BaseFairseqModel):
 
         x, layer_results = self.encoder(
             features,
-            spk_emb,
             padding_mask=padding_mask,
             layer=None if output_layer is None else output_layer - 1,
             tap=tap
