@@ -649,6 +649,7 @@ class HubertModel_7(BaseFairseqModel):
     def extract_features(
         self,
         source: torch.Tensor,
+        spk_emb: Optional[torch.Tensor] = None,
         padding_mask: Optional[torch.Tensor] = None,
         mask: bool = False,
         ret_conv: bool = False,

@@ -50,7 +50,7 @@ class HubertFeatureReader(object):
         if wav.ndim == 2:
             wav = wav.mean(-1)
         assert wav.ndim == 1, wav.ndim
-        spk_emb, _ = spk2info['valid'][path.split('/')[5]]
+        spk_emb, _ = spk2info['train'][path.split('/')[5]]
         #spk_emb = np.zeros((256,), dtype=np.float32)
         if ref_len is not None and abs(ref_len - len(wav)) > 160:
             logging.warning(f"ref {ref_len} != read {len(wav)} ({path})")
