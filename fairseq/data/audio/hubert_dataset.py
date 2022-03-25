@@ -10,6 +10,7 @@ import sys
 from typing import Any, List, Optional, Union
 
 import numpy as np
+import soundfile as sf
 
 import torch
 import torch.nn.functional as F
@@ -172,8 +173,6 @@ class HubertDataset(FairseqDataset):
         )
 
     def get_audio(self, index):
-        import soundfile as sf
-
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
         wav, cur_sample_rate = sf.read(wav_path)
         wav = torch.from_numpy(wav).float()
