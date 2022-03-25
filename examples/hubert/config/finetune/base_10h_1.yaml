@@ -60,7 +60,7 @@ lr_scheduler:
   final_lr_scale: 0.05
 
 model:
-  _name: hubert_ctc
+  _name: hubert_ctc_1
   w2v_path: ???
   apply_mask: true
   mask_selection: static

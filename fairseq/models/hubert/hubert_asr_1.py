@@ -292,7 +292,12 @@ class HubertEncoder(FairseqEncoder):
 
         if state is not None and not cfg.no_pretrained_weights:
             if cfg.only_feature_extractor:
-                set_trace()
+                keys = []
+                for key, val in state["model"].items():
+                    if key.split('.')[0] not in ["feature_extractor", "post_extract_proj"]:
+                        keys.append(key)
+                for key in keys:
+                    state["model"].pop(key)
             # set strict=False because we omit some modules
             model.load_state_dict(state["model"], strict=False)
 
