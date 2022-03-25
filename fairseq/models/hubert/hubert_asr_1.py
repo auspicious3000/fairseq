@@ -17,6 +17,9 @@ from fairseq.models import BaseFairseqModel, FairseqEncoder, register_model
 from fairseq.models.hubert.hubert import MASKING_DISTRIBUTION_CHOICES
 from fairseq.tasks import FairseqTask
 from omegaconf import II, MISSING
+
+import logging
+logger = logging.getLogger(__name__)
 from fairseq.pdb import set_trace
 
 @dataclass
@@ -298,6 +301,7 @@ class HubertEncoder(FairseqEncoder):
                         keys.append(key)
                 for key in keys:
                     state["model"].pop(key)
+                logger.info(f'Remaining keys: {state["model"].keys()}')
             # set strict=False because we omit some modules
             model.load_state_dict(state["model"], strict=False)
 
