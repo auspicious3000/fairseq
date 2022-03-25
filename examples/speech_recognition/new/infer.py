@@ -39,6 +39,7 @@ from omegaconf import OmegaConf
 
 import hydra
 from hydra.core.config_store import ConfigStore
+from fairseq.pdb import set_trace
 
 logging.root.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO)
