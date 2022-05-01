@@ -147,7 +147,7 @@ class HubertDataset(FairseqDataset):
             else label_rates
         )
         self.store_labels = fine_tuning
-        if store_labels:
+        if self.store_labels:
             self.label_list = [load_label(p, inds, tot) for p in label_paths]
         else:
             self.label_paths = label_paths
