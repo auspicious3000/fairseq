@@ -166,8 +166,7 @@ class HubertDataset(FairseqDataset):
         self.fine_tuning = fine_tuning
         if fine_tuning:
             import pickle
-            split = manifest_path.split('/')[-1][:-4]
-            with open(f'{split}.dict', "rb") as f:
+            with open(f'{manifest_path[:-4]}.dict', "rb") as f:
                 self.audio_dict = pickle.load(f)
 
         self.max_sample_size = (
