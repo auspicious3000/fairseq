@@ -183,7 +183,8 @@ class HubertDataset(FairseqDataset):
     def get_audio(self, index):
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
         if self.fine_tuning and 'train' in self.split:
-            wav, cur_sample_rate = self.audio_dict[wav_path]
+            fileName = wav_path.split('/')[-1]
+            wav, cur_sample_rate = self.audio_dict[fileName]
         else:
             wav, cur_sample_rate = sf.read(wav_path)
         wav = torch.from_numpy(wav).float()
