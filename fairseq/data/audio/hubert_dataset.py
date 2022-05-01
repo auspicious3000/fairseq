@@ -182,7 +182,7 @@ class HubertDataset(FairseqDataset):
 
     def get_audio(self, index):
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
-        if fine_tuning and 'train' in self.split:
+        if self.fine_tuning and 'train' in self.split:
             wav, cur_sample_rate = self.audio_dict[wav_path]
         else:
             wav, cur_sample_rate = sf.read(wav_path)
