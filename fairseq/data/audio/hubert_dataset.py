@@ -127,6 +127,7 @@ class HubertDataset(FairseqDataset):
         store_labels: bool = True,
         random_crop: bool = False,
         single_target: bool = False,
+        fine_tuning: bool = False
     ):
         self.audio_root, self.audio_names, inds, tot, self.sizes = load_audio(
             manifest_path, max_keep_sample_size, min_keep_sample_size
@@ -161,6 +162,13 @@ class HubertDataset(FairseqDataset):
             verify_label_lengths(
                 self.sizes, sample_rate, label_path, label_rate, inds, tot
             )
+            
+        self.fine_tuning = fine_tuning
+        if fine_tuning:
+            import pickle
+            split = manifest_path.split('/')[-1][:-4]
+            with open(f'{split}.dict', "rb") as f:
+                self.audio_dict = pickle.load(f)
 
         self.max_sample_size = (
             max_sample_size if max_sample_size is not None else sys.maxsize
@@ -174,7 +182,10 @@ class HubertDataset(FairseqDataset):
 
     def get_audio(self, index):
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
-        wav, cur_sample_rate = sf.read(wav_path)
+        if self.fine_tuning:
+            wav, cur_sample_rate = self.audio_dict[wav_path]
+        else:
+            wav, cur_sample_rate = sf.read(wav_path)
         wav = torch.from_numpy(wav).float()
         wav = self.postprocess(wav, cur_sample_rate)
         return wav

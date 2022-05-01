@@ -184,6 +184,7 @@ class HubertPretrainingTask(FairseqTask):
             store_labels=False,
             random_crop=self.cfg.random_crop,
             single_target=self.cfg.single_target,
+            fine_tuning=self.cfg.fine_tuning
         )
 
     def max_positions(self) -> Tuple[int, int]:
