@@ -164,8 +164,8 @@ class HubertDataset(FairseqDataset):
             )
             
         self.fine_tuning = fine_tuning
-        self.split = manifest_path.split('/')[-1][:-4]
-        if fine_tuning and 'train' in self.split:
+        #self.split = manifest_path.split('/')[-1][:-4]
+        if fine_tuning:
             import pickle
             with open(f'{manifest_path[:-4]}.dict', "rb") as f:
                 self.audio_dict = pickle.load(f)
@@ -182,7 +182,7 @@ class HubertDataset(FairseqDataset):
 
     def get_audio(self, index):
         wav_path = os.path.join(self.audio_root, self.audio_names[index])
-        if self.fine_tuning and 'train' in self.split:
+        if self.fine_tuning:
             fileName = wav_path.split('/')[-1]
             wav, cur_sample_rate = self.audio_dict[fileName]
         else:
