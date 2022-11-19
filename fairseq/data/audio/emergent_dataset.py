@@ -26,7 +26,7 @@ from fairseq.pdb import set_trace
 logger = logging.getLogger(__name__)
 
 
-def load_audio_spk(manifest_path, max_keep, min_keep):
+def load_audio_spk(manifest_path, max_keep, min_keep, multiplier):
     n_long, n_short = 0, 0
     names, sizes = {}, []
     with open(manifest_path) as f:
@@ -46,12 +46,13 @@ def load_audio_spk(manifest_path, max_keep, min_keep):
                 else:
                     names[spk] = []
                 sizes.append(sz)
-    names = list(names.values())
+    names = list(names.values())*multiplier
     logger.info(
         (
             f"max_keep={max_keep}, min_keep={min_keep}, "
             f"loaded {len(names)}, skipped {n_short} short and {n_long} long, "
-            f"longest-loaded={max(sizes)}, shortest-loaded={min(sizes)}"
+            f"longest-loaded={max(sizes)}, shortest-loaded={min(sizes)}, "
+            f"dataset_multiplier={multiplier}"
         )
     )
     return root, names, sizes
@@ -71,11 +72,13 @@ class EmergentDataset(FairseqDataset):
         random_crop: bool = False,
         num_negs: int = 0,
         len_crop: int = 0,
+        data_multiplier: int = 1,
     ):
         self.rng = np.random.default_rng()
         
         self.audio_root, self.audio_names, self.sizes = load_audio_spk(
-            manifest_path, max_keep_sample_size, min_keep_sample_size
+            manifest_path, max_keep_sample_size, min_keep_sample_size,
+            data_multiplier,
         )
         self.sample_rate = sample_rate
         self.shuffle = shuffle

@@ -64,12 +64,16 @@ class EmergentPretrainingConfig(FairseqDataclass):
         default=False,
         metadata={"help": "pad audio to the longest one in the batch if true"},
     )
-    num_negs: Optional[int] = field(
-        default=None,
+    num_negs: int = field(
+        default=128,
         metadata={"help": "number of negative samples"},
     )
-    len_crop: Optional[int] = field(
-        default=None,
+    len_crop: int = field(
+        default=5,
+        metadata={"help": "crop length"},
+    )
+    data_multiplier: Optional[int] = field(
+        default=1,
         metadata={"help": "crop length"},
     )
 
@@ -110,6 +114,7 @@ class EmergentPretrainingTask(FairseqTask):
             random_crop=self.cfg.random_crop,
             num_negs=self.cfg.num_negs,
             len_crop=self.cfg.len_crop,
+            data_multiplier=self.cfg.data_multiplier,
         )
 
     def max_positions(self) -> Tuple[int, int]:
