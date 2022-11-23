@@ -196,6 +196,7 @@ class Speaker(nn.Module):
             out_, hid_ = self.rnn(input_, hid_)
             logits_.append(c_logit_.unsqueeze(1))
             labels_.append(comm_label_)
+        
         logits_ = torch.cat(logits_, dim=1)
         labels_ = torch.cat(labels_, dim=-1)
         tmp = torch.zeros(logits_.size(-1))
@@ -209,7 +210,7 @@ class Speaker(nn.Module):
         
         logits_ = torch.where(pad_g.unsqueeze(-1).repeat(1, 1, logits_.size(-1)), logits_, pad_)
 
-        cap_len = pad_g.cumsum(1).max(1).values + 1
+        cap_len = pad_g.cumsum(1).max(1).data + 1
 
         return logits_, labels_, cap_len
     
@@ -261,9 +262,9 @@ def gumbel_softmax_sample(logits, temp, idx_=10):
 
 
 def gumbel_softmax(logits, temp, hard, idx_=10):
-    y = gumbel_softmax_sample(logits, temp, idx_)
-    y_max, y_max_idx = torch.max(y, 1, keepdim=True)
+    y_soft = gumbel_softmax_sample(logits, temp, idx_)
+    _, y_max_idx = torch.max(y_soft, dim=1, keepdim=True)
     if hard:
-        y_hard = torch.zeros_like(y).scatter_(1, y_max_idx.data, 1)
-        y = y_hard - y.detach() + y
-    return y, y_max_idx
+        y_hard = torch.zeros_like(logits).scatter_(1, y_max_idx.data, 1)
+        y = y_hard - y_soft.detach() + y_soft
+    return y_soft, y_max_idx
