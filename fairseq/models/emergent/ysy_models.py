@@ -199,7 +199,8 @@ class Speaker(nn.Module):
             stops_.append(stop.unsqueeze(1))
         logits = torch.cat(logits_, dim=1)
         stops = torch.cat(stops_, dim=1)
-                
+        stops[:, 0, :] = 0
+        
         masks_ = (stops > 0.5).cumsum(dim=1)==0
         masks = masks_.to(stops.dtype) - stops.detach() + stops
         
