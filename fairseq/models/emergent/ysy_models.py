@@ -36,7 +36,7 @@ class AgentConfig(FairseqDataclass):
         metadata={"help": "dim embedding"},
     )
     vocab_size: int = field(
-        default=4035,
+        default=4036,
         metadata={"help": "vocab size"},
     )
     num_layers: int = field(
@@ -129,7 +129,7 @@ class SingleAgent(BaseFairseqModel):
             hid_neg = self.beholder(samples_neg, mask_neg)
         hid_neg = hid_neg["encoder_out"]
 
-        rnn_hid = self.listener(comm_action[:, :-1], spk_cap_len-1, spk_logits[:, :-1, :])
+        rnn_hid = self.listener(comm_action, spk_cap_len, spk_logits)
         
         result = {
             "listener_out": rnn_hid,
@@ -165,7 +165,7 @@ class Speaker(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.rnn = nn.GRU(args.D_emb, args.D_hid, args.num_layers, batch_first=True)
-        self.emb = nn.Embedding(args.vocab_size, args.D_emb, padding_idx=0)
+        self.emb = nn.Embedding(args.vocab_size-1, args.D_emb, padding_idx=0)
 
         self.hid_to_voc = nn.Linear(args.D_hid, args.vocab_size)
 
@@ -188,31 +188,26 @@ class Speaker(nn.Module):
         initial_input = self.emb(2 * torch.ones([batch_size, 1], dtype=torch.int64, device=h_img.device))
         out_, hid_ = self.rnn(initial_input, h_img)
         logits_ = []
-        labels_ = []
+        stops_ = []
         for idx in range(self.seq_len):
-            logit_ = self.hid_to_voc(out_.view(-1, self.D_hid))
-            c_logit_, comm_label_ = gumbel_softmax(logit_, self.temp, self.hard, idx)
+            logit_stop = self.hid_to_voc(out_.view(-1, self.D_hid))
+            logit_, stop = logit_stop[:, 1:], logit_stop[:, :1]
+            c_logit_ = F.gumbel_softmax(logit_, self.temp, self.hard)
             input_ = torch.matmul(c_logit_.unsqueeze(1), self.emb.weight)
             out_, hid_ = self.rnn(input_, hid_)
             logits_.append(c_logit_.unsqueeze(1))
-            labels_.append(comm_label_)
+            stops_.append(stop.unsqueeze(1))
+        logits = torch.cat(logits_, dim=1)
+        stops = torch.cat(stops_, dim=1)
+                
+        masks_ = (stops > 0.5).cumsum(dim=1)==0
+        masks = masks_.to(stops.dtype) - stops.detach() + stops
         
-        logits_ = torch.cat(logits_, dim=1)
-        labels_ = torch.cat(labels_, dim=-1)
-        tmp = torch.zeros(logits_.size(-1))
-        tmp[3] = 1
-        logits_[:, -1, :] = tmp
-        labels_[:, -1] = 3
-        pad_g = ((labels_ == 3).cumsum(1) == 0)
-        labels_ = pad_g * labels_
-        pad_ = torch.zeros_like(logits_)
-        pad_[:, :, 0] = 1
+        logits_out = logits * masks
         
-        logits_ = torch.where(pad_g.unsqueeze(-1).repeat(1, 1, logits_.size(-1)), logits_, pad_)
+        len_out = masks.sum(dim=1).squeeze(-1)
 
-        cap_len = pad_g.cumsum(1).max(1).data + 1
-
-        return logits_, labels_, cap_len
+        return logits_out, masks, len_out
     
     
 class RnnListener(nn.Module):
@@ -220,7 +215,7 @@ class RnnListener(nn.Module):
         super().__init__()
         self.rnn = nn.GRU(args.D_emb, args.D_hid, args.num_layers, batch_first=True, 
                           bidirectional=(args.num_directions==2))
-        self.emb = nn.Embedding(args.vocab_size, args.D_emb, padding_idx=0)
+        self.emb = nn.Embedding(args.vocab_size-1, args.D_emb, padding_idx=0)
         self.hid_to_hid = nn.Linear(args.num_directions * args.D_hid, args.D_hid)
         self.drop = nn.Dropout(p=args.dropout)
 
@@ -254,17 +249,6 @@ class RnnListener(nn.Module):
         return out
 
 
-def gumbel_softmax_sample(logits, temp, idx_=10):
-    y = (logits -torch.empty_like(logits).exponential_().log()) / temp
-    if idx_ == 0:
-        y[:, 3] = -float('Inf')
-    return F.softmax(y, dim=-1)
-
-
-def gumbel_softmax(logits, temp, hard, idx_=10):
-    y_soft = gumbel_softmax_sample(logits, temp, idx_)
-    _, y_max_idx = torch.max(y_soft, dim=1, keepdim=True)
-    if hard:
-        y_hard = torch.zeros_like(logits).scatter_(1, y_max_idx.data, 1)
-        y = y_hard - y_soft.detach() + y_soft
-    return y_soft, y_max_idx
+def quantize_stops(stops, threshold):
+    masks = (stops > threshold).cumsum(dim=1)==0
+    return masks - stops.detach() + stops
