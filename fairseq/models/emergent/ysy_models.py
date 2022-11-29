@@ -210,7 +210,7 @@ class Speaker(nn.Module):
         
         logits_ = torch.where(pad_g.unsqueeze(-1).repeat(1, 1, logits_.size(-1)), logits_, pad_)
 
-        cap_len = pad_g.cumsum(1).max(1).data + 1
+        cap_len = pad_g.cumsum(1).max(1).values + 1
 
         return logits_, labels_, cap_len
     
