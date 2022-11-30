@@ -207,13 +207,15 @@ class Speaker(nn.Module):
         stops_qt = stops > 0.5
         stops_qt = stops_qt.to(stops.dtype) - stops.detach() + stops
         mask = stops_qt.cumsum(dim=1)
-        mask = 1 + F.threshold(-mask, -1, -1)
+        mask_fw = 1 + F.threshold(-mask, -1, -1)
+        mask_bk = F.softplus(1-mask)
+        mask_fw = mask_bk + (mask_fw - mask_bk).detach()
         
-        logits_out = logits * mask
+        logits_out = logits * mask_fw
         
-        len_out = mask.sum(dim=1).squeeze(-1)
+        len_out = mask_fw.sum(dim=1).squeeze(-1)
     
-        return logits_out, mask, len_out
+        return logits_out, mask_fw, len_out
     
     
 class RnnListener(nn.Module):
