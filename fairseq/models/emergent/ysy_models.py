@@ -67,6 +67,10 @@ class AgentConfig(FairseqDataclass):
         default=False,
         metadata={"help": "num of rnn layers"},
     )
+    backward_grad: bool = field(
+        default=False,
+        metadata={"help": "backward gradient of mask"},
+    )
     # this holds the loaded hubert args
     w2v_args: FairseqDataclass = HubertAsrConfig()
 
@@ -178,6 +182,7 @@ class Speaker(nn.Module):
         self.temp = args.temp
         self.hard = args.hard
         self.seq_len = args.seq_len
+        self.backward_grad = args.backward_grad
 
     def forward(self, h_img):
         # h_img [batch_size, dim]
@@ -208,8 +213,9 @@ class Speaker(nn.Module):
         stops_qt = stops_qt.to(stops.dtype) - stops.detach() + stops
         mask = stops_qt.cumsum(dim=1)
         mask_fw = 1 + F.threshold(-mask, -1, -1)
-        mask_bk = F.softplus(1-mask)
-        mask_fw = mask_bk + (mask_fw - mask_bk).detach()
+        if self.backward_grad:
+            mask_bk = F.softplus(1-mask)
+            mask_fw = mask_bk + (mask_fw - mask_bk).detach()
         
         logits_out = logits * mask_fw
         
