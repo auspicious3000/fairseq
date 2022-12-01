@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
 
 from dataclasses import dataclass, field
 from fairseq.dataclass import ChoiceEnum, FairseqDataclass
@@ -70,6 +71,14 @@ class AgentConfig(FairseqDataclass):
     backward_grad: bool = field(
         default=False,
         metadata={"help": "backward gradient of mask"},
+    )
+    mask_drop: bool = field(
+        default=False,
+        metadata={"help": "randomly drop mask"},
+    )
+    remove_mask: bool = field(
+        default=False,
+        metadata={"help": "remove mask"},
     )
     # this holds the loaded hubert args
     w2v_args: FairseqDataclass = HubertAsrConfig()
@@ -172,6 +181,9 @@ class Speaker(nn.Module):
         self.emb = nn.Embedding(args.vocab_size-1, args.D_emb, padding_idx=0)
 
         self.hid_to_voc = nn.Linear(args.D_hid, args.vocab_size)
+        with torch.no_grad():
+            #self.hid_to_voc.weight[0, :] = 10.0
+            self.hid_to_voc.bias[0] = -5.0
 
         self.D_emb = args.D_emb
         self.D_hid = args.D_hid
@@ -183,6 +195,8 @@ class Speaker(nn.Module):
         self.hard = args.hard
         self.seq_len = args.seq_len
         self.backward_grad = args.backward_grad
+        self.mask_drop = args.mask_drop
+        self.remove_mask = args.remove_mask
 
     def forward(self, h_img):
         # h_img [batch_size, dim]
@@ -206,7 +220,7 @@ class Speaker(nn.Module):
         stops = torch.cat(stops_, dim=1)
         stops[:, 0, :] = -float('Inf')
         stops = torch.sigmoid(stops)
-        
+        #set_trace()
         U = torch.rand_like(stops) - 0.5
         stops = stops + U
         stops_qt = stops > 0.5
@@ -216,8 +230,16 @@ class Speaker(nn.Module):
         if self.backward_grad:
             mask_bk = F.softplus(1-mask)
             mask_fw = mask_bk + (mask_fw - mask_bk).detach()
+        if self.mask_drop:
+            drop = torch.rand(stops.size(0), 1, 1, device=stops.device) > 0.8 #1->drops
+            drop = drop.to(stops.dtype)
+            mask_full = torch.ones_like(stops)
+            mask_fw = drop * mask_full + (1-drop) * mask_fw
         
-        logits_out = logits * mask_fw
+        if self.remove_mask:
+            logits_out = logits
+        else:
+            logits_out = logits * mask_fw
         
         len_out = mask_fw.sum(dim=1).squeeze(-1)
     
