@@ -111,17 +111,6 @@ class SingleAgent(BaseFairseqModel):
         model = SingleAgent(cfg, task)
         return model
 
-    def generate_ec(self, samples):
-        with torch.no_grad():
-            if self.no_share_bhd:
-                hid = self.beholder1(samples)  # shared
-            else:
-                hid = self.beholder(samples)  # shared
-
-            _, comm_action, _ = self.speaker(hid)
-            
-        return comm_action
-
     def forward(self, samples):
         samples_pos = samples['pos_audios']
         mask_pos = samples['padding_mask_pos']
@@ -134,7 +123,9 @@ class SingleAgent(BaseFairseqModel):
             hid_pos = self.beholder(samples_pos, mask_pos)  # shared
         hid_pos = hid_pos["encoder_out"]
         
-        spk_logits, comm_action, spk_cap_len = self.speaker(hid_pos)
+        spk_logits, mask, spk_cap_len, labels = self.speaker(hid_pos)
+        
+        rnn_hid = self.listener(mask, spk_cap_len, spk_logits)
         
         if self.no_share_bhd:
             hid_neg = self.beholder2(samples_neg, mask_neg)
@@ -142,14 +133,24 @@ class SingleAgent(BaseFairseqModel):
             hid_neg = self.beholder(samples_neg, mask_neg)
         hid_neg = hid_neg["encoder_out"]
 
-        rnn_hid = self.listener(comm_action, spk_cap_len, spk_logits)
-        
         result = {
             "listener_out": rnn_hid,
             "candidates": hid_neg,
             "spk_cap_len": spk_cap_len,
         }
         return result
+    
+    def get_language(self, samples, mask):
+        
+        if self.no_share_bhd:
+            hid = self.beholder1(samples, mask)  # shared
+        else:
+            hid = self.beholder(samples, mask)  # shared
+        hid = hid["encoder_out"]
+        
+        spk_logits, mask, spk_cap_len, labels = self.speaker(hid)
+        
+        return spk_logits, labels
     
     def get_logits(self, net_output):
         listener_out = net_output['listener_out'].unsqueeze(1).expand(-1, self.num_dist, -1)
@@ -212,6 +213,7 @@ class Speaker(nn.Module):
             logit_stop = self.hid_to_voc(out_.view(-1, self.D_hid))
             logit_, stop = logit_stop[:, 1:], logit_stop[:, :1]
             c_logit_ = F.gumbel_softmax(logit_, self.temp, self.hard)
+            #c_logit_ = F.softmax(logit_, dim=-1)
             input_ = torch.matmul(c_logit_.unsqueeze(1), self.emb.weight)
             out_, hid_ = self.rnn(input_, hid_)
             logits_.append(c_logit_.unsqueeze(1))
@@ -220,7 +222,8 @@ class Speaker(nn.Module):
         stops = torch.cat(stops_, dim=1)
         stops[:, 0, :] = -float('Inf')
         stops = torch.sigmoid(stops)
-        #set_trace()
+        _, labels = logits.max(dim=-1) 
+        
         U = torch.rand_like(stops) - 0.5
         stops = stops + U
         stops_qt = stops > 0.5
@@ -230,8 +233,8 @@ class Speaker(nn.Module):
         if self.backward_grad:
             mask_bk = F.softplus(1-mask)
             mask_fw = mask_bk + (mask_fw - mask_bk).detach()
-        if self.mask_drop:
-            drop = torch.rand(stops.size(0), 1, 1, device=stops.device) > 0.8 #1->drops
+        if self.mask_drop > 0:
+            drop = torch.rand(stops.size(0), 1, 1, device=stops.device) > self.mask_drop #1->drops
             drop = drop.to(stops.dtype)
             mask_full = torch.ones_like(stops)
             mask_fw = drop * mask_full + (1-drop) * mask_fw
@@ -243,7 +246,7 @@ class Speaker(nn.Module):
         
         len_out = mask_fw.sum(dim=1).squeeze(-1)
     
-        return logits_out, mask_fw, len_out
+        return logits_out, mask_fw, len_out, labels
     
     
 class RnnListener(nn.Module):
