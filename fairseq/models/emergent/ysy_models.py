@@ -72,9 +72,9 @@ class AgentConfig(FairseqDataclass):
         default=False,
         metadata={"help": "backward gradient of mask"},
     )
-    mask_drop: bool = field(
-        default=False,
-        metadata={"help": "randomly drop mask"},
+    mask_drop: float = field(
+        default=0.0,
+        metadata={"help": "randomly drop mask prob"},
     )
     remove_mask: bool = field(
         default=False,
@@ -234,7 +234,7 @@ class Speaker(nn.Module):
             mask_bk = F.softplus(1-mask)
             mask_fw = mask_bk + (mask_fw - mask_bk).detach()
         if self.mask_drop > 0:
-            drop = torch.rand(stops.size(0), 1, 1, device=stops.device) > self.mask_drop #1->drops
+            drop = torch.rand(stops.size(0), 1, 1, device=stops.device) > 1-self.mask_drop #1->drops
             drop = drop.to(stops.dtype)
             mask_full = torch.ones_like(stops)
             mask_fw = drop * mask_full + (1-drop) * mask_fw
