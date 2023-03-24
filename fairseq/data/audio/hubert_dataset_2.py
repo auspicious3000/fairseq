@@ -247,7 +247,9 @@ class HubertDataset_2(FairseqDataset):
     
         fileName = self.audio_names[index]
         fileLen = self.sizes[index]
-        spk = fileName.split('/')[1]
+        import re
+        spk, book, ix = re.match(r'.*[_/](\d+)-(\d+)-(\d+)[_.].*', fileName).groups()
+        #spk = fileName.split('/')[1]
         wav_path = os.path.join(self.audio_root, fileName)
         wav, cur_sample_rate = sf.read(wav_path)
         if wav.ndim == 2:
